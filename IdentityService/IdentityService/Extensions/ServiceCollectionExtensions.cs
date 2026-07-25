@@ -54,6 +54,8 @@ namespace IdentityService.Extensions
             services.AddScoped<IRefreshTokenService, RefreshTokenService>();
             services.AddScoped<IIpAddressService, IpAddressService>();
             services.AddScoped<IRegisterService, RegisterService>();
+            services.AddScoped<IUserService, UserService>();
+            services.AddScoped<IFriendshipService, FriendshipService>();
 
             return services;
         }

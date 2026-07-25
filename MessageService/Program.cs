@@ -27,6 +27,7 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddScoped<IMessageService, MessageService.Services.MessageService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IDmConversationService, DmConversationService>();
 builder.Services.AddSingleton<IBackgroundTaskQueue>(
     provider=> new BackgroundTaskQueue(capacity:100)
 );

@@ -36,11 +36,19 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var httpContext = new DefaultHttpContext();
             httpContext.Request.Scheme = "https";
             httpContext.Request.Host = new HostString("localhost:5001");
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    new[] { new Claim(ClaimTypes.NameIdentifier, TestUserId) },
+                    "TestAuth"
+                )
+            );
             _controller.ControllerContext = new ControllerContext()
             {
                 HttpContext = httpContext
             };
         }
+
+        private const string TestUserId = "user123";
 
         #region Register Tests
 
@@ -367,7 +375,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             );
 
             _mockAuthService
-                .Setup(x => x.GetMySessionsByUserId(ClaimTypes.NameIdentifier))
+                .Setup(x => x.GetMySessionsByUserId(TestUserId))
                 .ReturnsAsync(apiResponse);
 
             // Act
@@ -383,7 +391,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             Assert.Equal(2, response.Data.Count);
 
             _mockAuthService.Verify(
-                x => x.GetMySessionsByUserId(ClaimTypes.NameIdentifier),
+                x => x.GetMySessionsByUserId(TestUserId),
                 Times.Once
             );
         }
@@ -401,7 +409,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             );
 
             _mockAuthService
-                .Setup(x => x.GetMySessionsByUserId(ClaimTypes.NameIdentifier))
+                .Setup(x => x.GetMySessionsByUserId(TestUserId))
                 .ReturnsAsync(apiResponse);
 
             // Act
@@ -417,7 +425,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             Assert.Empty(response.Data);
 
             _mockAuthService.Verify(
-                x => x.GetMySessionsByUserId(ClaimTypes.NameIdentifier),
+                x => x.GetMySessionsByUserId(TestUserId),
                 Times.Once
             );
         }
@@ -437,7 +445,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             );
 
             _mockAuthService
-                .Setup(x => x.LogoutSessionAsync(sessionId))
+                .Setup(x => x.LogoutSessionAsync(sessionId, TestUserId))
                 .ReturnsAsync(apiResponse);
 
             // Act
@@ -449,7 +457,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var response = Assert.IsType<ApiResponse<string>>(objectResult.Value);
             Assert.True(response.IsSuccessfull);
 
-            _mockAuthService.Verify(x => x.LogoutSessionAsync(sessionId), Times.Once);
+            _mockAuthService.Verify(x => x.LogoutSessionAsync(sessionId, TestUserId), Times.Once);
         }
 
         [Fact]
@@ -463,7 +471,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             );
 
             _mockAuthService
-                .Setup(x => x.LogoutSessionAsync(sessionId))
+                .Setup(x => x.LogoutSessionAsync(sessionId, TestUserId))
                 .ReturnsAsync(apiResponse);
 
             // Act
@@ -475,7 +483,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var response = Assert.IsType<ApiResponse<string>>(objectResult.Value);
             Assert.False(response.IsSuccessfull);
 
-            _mockAuthService.Verify(x => x.LogoutSessionAsync(sessionId), Times.Once);
+            _mockAuthService.Verify(x => x.LogoutSessionAsync(sessionId, TestUserId), Times.Once);
         }
 
         #endregion

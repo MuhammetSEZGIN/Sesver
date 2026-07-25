@@ -10,5 +10,5 @@ public interface IAuthService
     Task<ApiResponse<AuthResponseDto>> LoginAsync(LoginRequestModel model);
     Task<ApiResponse<RefreshTokenResultDto>> RefreshTokenAsync(RefreshTokenDto model);
     Task<ApiResponse<List<UserSessionsResultDto>>> GetMySessionsByUserId(string userId);
-    Task<ApiResponse<string>> LogoutSessionAsync(string sessionId);
+    Task<ApiResponse<string>> LogoutSessionAsync(string sessionId, string userId);
 }

@@ -5,6 +5,7 @@ using IdentityService.DTOs;
 using IdentityService.Examples;
 using IdentityService.Interfaces;
 using IdentityService.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Filters;
 
@@ -103,18 +104,22 @@ namespace IdentityService.Controllers
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
+        [Authorize]
         [HttpGet("my-sessions")]
         public async Task<IActionResult> GetMySessions()
         {
-            var result = await _authService.GetMySessionsByUserId(ClaimTypes.NameIdentifier);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var result = await _authService.GetMySessionsByUserId(userId);
 
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
+        [Authorize]
         [HttpPost("logout-session/{sessionId}")]
         public async Task<IActionResult> LogoutSession(string sessionId)
         {
-            var result = await _authService.LogoutSessionAsync(sessionId);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var result = await _authService.LogoutSessionAsync(sessionId, userId);
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 

@@ -181,12 +181,12 @@ public class AuthService : IAuthService
         );
     }
 
-    public async Task<ApiResponse<string>> LogoutSessionAsync(string sessionId)
+    public async Task<ApiResponse<string>> LogoutSessionAsync(string sessionId, string userId)
     {
         try
         {
             var session = await _context.UserRefreshTokens.FindAsync(sessionId);
-            if (session == null)
+            if (session == null || session.UserId != userId)
             {
                 return ApiResponse<string>.Failed(
                     "Session not found",

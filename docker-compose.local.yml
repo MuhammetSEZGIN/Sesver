@@ -1,0 +1,116 @@
+services:
+  identity-db:
+    image: postgres:18-alpine
+    container_name: sesver-local-identity-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: IdentityDb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5433:5432"
+    volumes:
+      - sesver_local_identity_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d IdentityDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  clan-db:
+    image: postgres:18-alpine
+    container_name: sesver-local-clan-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ClanDb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - sesver_local_clan_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d ClanDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # AuthenticationService (Java) — kendi ayrı Postgres'i, prod'daki auth-postgres ile aynı DB adı.
+  auth-db:
+    image: postgres:15-alpine
+    container_name: sesver-local-auth-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: clan_roles_db
+      POSTGRES_USER: my_db_user
+      POSTGRES_PASSWORD: my_db_password
+    ports:
+      - "5435:5432"
+    volumes:
+      - sesver_local_auth_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U my_db_user -d clan_roles_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # AuthenticationService'in application.yaml varsayılanı SPRING_DATA_REDIS_PORT=6380'i baz alır.
+  auth-redis:
+    image: redis:7-alpine
+    container_name: sesver-local-auth-redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  message-db:
+    image: mongo:7
+    container_name: sesver-local-message-db
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: "1234"
+    ports:
+      - "27017:27017"
+    volumes:
+      - sesver_local_message_db:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: sesver-local-rabbitmq
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sesver-local-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sesver_local_identity_db:
+  sesver_local_clan_db:
+  sesver_local_auth_db:
+  sesver_local_message_db:

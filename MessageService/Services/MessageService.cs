@@ -61,16 +61,33 @@ public class MessageService : IMessageService
         }
     }
 
-    public async Task<ServiceResult<bool>> DeleteMessageAsync(ObjectId messageId)
+    public async Task<ServiceResult<bool>> DeleteMessageAsync(ObjectId messageId, string requesterId)
     {
         try
         {
-            
+
             if (messageId == ObjectId.Empty)
             {
                 _logger.LogWarning("Attempted to delete message with empty ID");
                 return ServiceResult<bool>.BadRequest("Message ID cannot be empty");
             }
+
+            var existing = await _messageRepository.GetByIdAsync(messageId);
+            if (existing == null)
+            {
+                return ServiceResult<bool>.NotFound("Message not found");
+            }
+            if (existing.SenderId != requesterId)
+            {
+                _logger.LogWarning(
+                    "User {RequesterId} attempted to delete message {MessageId} owned by {SenderId}",
+                    requesterId,
+                    messageId,
+                    existing.SenderId
+                );
+                return ServiceResult<bool>.Forbidden("You can only delete your own messages");
+            }
+
             var result = await _messageRepository.DeleteMessagesByMessageId(messageId);
             if (!result)
             {
@@ -119,7 +136,7 @@ public class MessageService : IMessageService
         }
     }
 
-    public async Task<ServiceResult<Message>> UpdateMessage(ObjectId messageId, string newContent)
+    public async Task<ServiceResult<Message>> UpdateMessage(ObjectId messageId, string newContent, string requesterId)
     {
         try
         {
@@ -140,6 +157,17 @@ public class MessageService : IMessageService
             {
                 _logger.LogWarning("Message {MessageId} not found for update", messageId);
                 return ServiceResult<Message>.NotFound("Message not found");
+            }
+
+            if (message.SenderId != requesterId)
+            {
+                _logger.LogWarning(
+                    "User {RequesterId} attempted to update message {MessageId} owned by {SenderId}",
+                    requesterId,
+                    messageId,
+                    message.SenderId
+                );
+                return ServiceResult<Message>.Forbidden("You can only edit your own messages");
             }
 
             message.Text = newContent;
