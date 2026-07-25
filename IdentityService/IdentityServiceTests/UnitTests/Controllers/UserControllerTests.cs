@@ -9,6 +9,7 @@ using IdentityService.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
 
@@ -24,7 +25,16 @@ namespace IdentityServiceTests.UnitTests.Controllers
         public UserControllerTests()
         {
             _mockUserService = new Mock<IUserService>();
-            _controller = new UserController(_mockUserService.Object);
+            _controller = new UserController(
+                _mockUserService.Object,
+                new ConfigurationBuilder().AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["ClientApp:EmailConfirmationUrl"] =
+                            "https://api.example.com/identity/confirm-email",
+                    }
+                ).Build()
+            );
 
             var httpContext = new DefaultHttpContext();
             httpContext.User = new ClaimsPrincipal(
@@ -45,7 +55,6 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var updateModel = new UpdateUserModel
             {
                 UserName = "updateduser",
-                Email = "updated@example.com",
                 AvatarUrl = "https://example.com/avatar.jpg"
             };
 
@@ -73,8 +82,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                UserName = "updateduser",
-                Email = "updated@example.com"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -112,8 +120,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                UserName = "updateduser",
-                Email = "invalid-email"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -147,7 +154,6 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var updateModel = new UpdateUserModel
             {
                 UserName = "updateduser",
-                Email = "updated@example.com",
                 AvatarUrl = null,
                 Bio = null
             };
@@ -174,8 +180,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                UserName = "updateduser",
-                Email = "updated@example.com"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -210,7 +215,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // In a real scenario, model validation happens before controller action
 
             // Arrange
-            var updateModel = new UpdateUserModel { UserName = "test", Email = "test@example.com" };
+            var updateModel = new UpdateUserModel { UserName = "test" };
 
             var identityResult = IdentityResult.Success;
 
@@ -224,6 +229,66 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Assert
             Assert.IsType<OkObjectResult>(result);
             _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
+        }
+
+        #endregion
+
+        #region ChangeEmail Tests
+
+        [Fact]
+        public async Task ChangeEmail_ValidRequest_ReturnsServiceResponse()
+        {
+            var model = new ChangeEmailRequestDto { Email = "new@example.com" };
+            _mockUserService
+                .Setup(x =>
+                    x.ChangeEmailAsync(
+                        TestUserId,
+                        model,
+                        "https://api.example.com/identity/confirm-email"
+                    )
+                )
+                .ReturnsAsync(
+                    ApiResponse<object>.Success(
+                        "Email updated. Please check your new address for the confirmation link."
+                    )
+                );
+
+            var result = await _controller.ChangeEmail(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(200, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.True(response.IsSuccessfull);
+            _mockUserService.Verify(
+                x =>
+                    x.ChangeEmailAsync(
+                        TestUserId,
+                        model,
+                        "https://api.example.com/identity/confirm-email"
+                    ),
+                Times.Once
+            );
+        }
+
+        [Fact]
+        public async Task ChangeEmail_DuplicateEmail_ReturnsBadRequest()
+        {
+            var model = new ChangeEmailRequestDto { Email = "taken@example.com" };
+            _mockUserService
+                .Setup(x => x.ChangeEmailAsync(TestUserId, model, It.IsAny<string>()))
+                .ReturnsAsync(
+                    ApiResponse<object>.Failed(
+                        "Email could not be updated.",
+                        new[] { "Email is already taken." }
+                    )
+                );
+
+            var result = await _controller.ChangeEmail(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(400, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.False(response.IsSuccessfull);
         }
 
         #endregion

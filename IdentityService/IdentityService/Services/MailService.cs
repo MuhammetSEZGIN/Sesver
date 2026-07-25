@@ -1,13 +1,13 @@
 using System.Net;
+using System.Net.Mail;
+using System.Text;
+using System.Text.Encodings.Web;
 using IdentityService.DTOs;
 using IdentityService.Interfaces;
 using IdentityService.Models;
 using IdentityService.Utilities;
-using MailKit.Net.Smtp;
-using MailKit.Security;
 using Microsoft.AspNetCore.Identity;
-using MimeKit;
-using MimeKit.Text;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace IdentityService.Services;
 
@@ -56,28 +56,40 @@ public class EmailService : IEmailService
                 );
             }
             var fromAddress = smtpSettings["FromAddress"];
+            var fromName = smtpSettings["FromName"];
             var host = smtpSettings["Host"];
-            var port = int.Parse(smtpSettings["Port"]);
+            if (!int.TryParse(smtpSettings["Port"], out var port))
+            {
+                throw new InvalidOperationException("Smtp:Port must be a valid number.");
+            }
             var username = smtpSettings["Username"];
             var password = smtpSettings["Password"];
 
-            // MimeMessage nesnesini oluştur (e-postanın kendisi)
-            var email = new MimeMessage();
-            email.From.Add(MailboxAddress.Parse(fromAddress));
-            email.To.Add(MailboxAddress.Parse(toEmail));
-            email.Subject = subject;
-            email.Body = new TextPart(TextFormat.Html) { Text = content };
-
-            // SmtpClient nesnesini oluştur ve bağlan
-            using (var smtp = new SmtpClient())
+            if (
+                string.IsNullOrWhiteSpace(fromAddress)
+                || string.IsNullOrWhiteSpace(host)
+                || string.IsNullOrWhiteSpace(username)
+                || string.IsNullOrWhiteSpace(password)
+            )
             {
-                await smtp.ConnectAsync(host, port, SecureSocketOptions.StartTls);
-                await smtp.AuthenticateAsync(username, password);
-                await smtp.SendAsync(email);
-                await smtp.DisconnectAsync(true);
+                throw new InvalidOperationException("SMTP configuration is incomplete.");
             }
 
-            _logger.LogInformation("MailKit ile e-posta başarıyla gönderildi: {Email}", toEmail);
+            using (var email = new MailMessage())
+            using (var smtp = new SmtpClient(host, port))
+            {
+                email.From = new MailAddress(fromAddress, fromName ?? string.Empty);
+                email.To.Add(new MailAddress(toEmail));
+                email.Subject = subject;
+                email.Body = content;
+                email.IsBodyHtml = true;
+
+                smtp.Credentials = new NetworkCredential(username, password);
+                smtp.EnableSsl = true;
+                await smtp.SendMailAsync(email);
+            }
+
+            _logger.LogInformation("SMTP ile e-posta başarıyla gönderildi: {Email}", toEmail);
             return ApiResponse<object>.Success(
                 "E-posta başarıyla gönderildi.",
                 (int)HttpStatusCode.OK
@@ -87,12 +99,12 @@ public class EmailService : IEmailService
         {
             _logger.LogError(
                 ex,
-                "MailKit ile e-posta gönderilirken bir hata oluştu. Alıcı: {Email}",
+                "SMTP ile e-posta gönderilirken bir hata oluştu. Alıcı: {Email}",
                 toEmail
             );
             return ApiResponse<object>.Failed(
                 "E-posta gönderilirken bir hata oluştu.",
-                new[] { ex.Message },
+                null,
                 (int)HttpStatusCode.InternalServerError
             );
         }
@@ -122,7 +134,18 @@ public class EmailService : IEmailService
                     (int)HttpStatusCode.OK
                 );
             }
-            var decodedToken = WebUtility.UrlDecode(token);
+            string decodedToken;
+            try
+            {
+                decodedToken = token.StartsWith("v2.", StringComparison.Ordinal)
+                    ? Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(token[3..]))
+                    : token;
+            }
+            catch (FormatException)
+            {
+                return ApiResponse<object>.Failed("Email confirmation link is invalid.");
+            }
+
             var result = await _userManager.ConfirmEmailAsync(user, decodedToken);
             if (!result.Succeeded)
             {
@@ -191,23 +214,29 @@ public class EmailService : IEmailService
             }
 
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var encodedToken = WebUtility.UrlEncode(token);
-            var encodedUserId = WebUtility.UrlEncode(userId);
-
-            var fullConfirmationUrl =
-                $"{confirmationUrl}?userId={encodedUserId}&token={encodedToken}";
+            var encodedToken = $"v2.{WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token))}";
+            var fullConfirmationUrl = QueryHelpers.AddQueryString(
+                confirmationUrl,
+                new Dictionary<string, string>
+                {
+                    ["userId"] = userId,
+                    ["token"] = encodedToken,
+                }
+            );
 
             var subject = "Email Confirmation";
+            var safeUserName = HtmlEncoder.Default.Encode(user.UserName ?? user.Email);
+            var safeConfirmationUrl = HtmlEncoder.Default.Encode(fullConfirmationUrl);
             var htmlContent =
                 $@"
-            <h2>Welcome {user.UserName}!</h2>
+            <h2>Welcome {safeUserName}!</h2>
             <p>Please confirm your email address by clicking the link below:</p>
-            <a href='{fullConfirmationUrl}' style='background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; display: inline-block; border-radius: 4px;'>
+            <a href='{safeConfirmationUrl}' style='background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; display: inline-block; border-radius: 4px;'>
                 Confirm Email
             </a>
             <p>If the button doesn't work, copy and paste this link into your browser:</p>
-            <p>{fullConfirmationUrl}</p>
-            <p>This link will expire in 24 hours.</p>
+            <p>{safeConfirmationUrl}</p>
+            <p>This link will expire in 6 hours.</p>
         ";
 
             var emailResult = await SendEmailAsync(user.Email, subject, htmlContent);
@@ -242,4 +271,142 @@ public class EmailService : IEmailService
             );
         }
     }
+
+    public async Task<ApiResponse<object>> SendPasswordResetAsync(string email)
+    {
+        const string genericMessage =
+            "If an account exists for this email, a password reset link has been sent.";
+
+        try
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user == null || string.IsNullOrWhiteSpace(user.Email))
+            {
+                _logger.LogInformation(
+                    "Password reset requested for an address that does not belong to an account."
+                );
+                return ApiResponse<object>.Success(genericMessage, (int)HttpStatusCode.OK);
+            }
+
+            var resetPasswordUrl = _configuration["ClientApp:PasswordResetUrl"];
+            if (
+                !Uri.TryCreate(resetPasswordUrl, UriKind.Absolute, out var parsedResetUrl)
+                || (parsedResetUrl.Scheme != Uri.UriSchemeHttp
+                    && parsedResetUrl.Scheme != Uri.UriSchemeHttps)
+            )
+            {
+                _logger.LogError("ClientApp:PasswordResetUrl is missing or invalid.");
+                return ApiResponse<object>.Failed(
+                    "Password reset email could not be sent.",
+                    null,
+                    (int)HttpStatusCode.InternalServerError
+                );
+            }
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
+            var fullResetUrl = QueryHelpers.AddQueryString(
+                parsedResetUrl.ToString(),
+                new Dictionary<string, string>
+                {
+                    ["email"] = user.Email,
+                    ["token"] = encodedToken,
+                }
+            );
+
+            var safeUserName = HtmlEncoder.Default.Encode(user.UserName ?? user.Email);
+            var safeResetUrl = HtmlEncoder.Default.Encode(fullResetUrl);
+            var htmlContent = $@"
+                <h2>Hello {safeUserName},</h2>
+                <p>We received a request to reset your Sesver password.</p>
+                <p><a href='{safeResetUrl}' style='background-color: #4CAF50; color: white; padding: 14px 20px; text-decoration: none; display: inline-block; border-radius: 4px;'>Reset Password</a></p>
+                <p>If the button does not work, copy and paste this link into your browser:</p>
+                <p>{safeResetUrl}</p>
+                <p>This one-time link expires in 6 hours. If you did not request it, you can ignore this email.</p>";
+
+            var emailResult = await SendEmailAsync(user.Email, "Reset your Sesver password", htmlContent);
+            if (!emailResult.IsSuccessfull)
+            {
+                _logger.LogError("Password reset email could not be sent to {Email}.", user.Email);
+                return emailResult;
+            }
+
+            return ApiResponse<object>.Success(genericMessage, (int)HttpStatusCode.OK);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An error occurred while preparing a password reset email.");
+            return ApiResponse<object>.Failed(
+                "Password reset email could not be sent.",
+                null,
+                (int)HttpStatusCode.InternalServerError
+            );
+        }
+    }
+
+    public async Task<ApiResponse<object>> ResetPasswordAsync(ResetPasswordRequestDto model)
+    {
+        try
+        {
+            var user = await _userManager.FindByEmailAsync(model.Email);
+            if (user == null)
+            {
+                return InvalidResetRequest();
+            }
+
+            string decodedToken;
+            try
+            {
+                decodedToken = Encoding.UTF8.GetString(
+                    WebEncoders.Base64UrlDecode(model.Token)
+                );
+            }
+            catch (FormatException)
+            {
+                return InvalidResetRequest();
+            }
+
+            var result = await _userManager.ResetPasswordAsync(
+                user,
+                decodedToken,
+                model.NewPassword
+            );
+            if (!result.Succeeded)
+            {
+                _logger.LogWarning("Password reset failed for user {UserId}.", user.Id);
+                return InvalidResetRequest();
+            }
+
+            var revoked = await _refreshTokenService.RevokeAllUserTokensAsync(user.Id);
+            if (!revoked)
+            {
+                _logger.LogWarning(
+                    "Password reset succeeded but refresh token revocation failed for user {UserId}.",
+                    user.Id
+                );
+            }
+
+            _logger.LogInformation("Password reset completed for user {UserId}.", user.Id);
+            return ApiResponse<object>.Success(
+                "Password has been reset successfully. Please sign in again.",
+                (int)HttpStatusCode.OK
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "An error occurred while resetting a password.");
+            return ApiResponse<object>.Failed(
+                "An error occurred while resetting the password.",
+                null,
+                (int)HttpStatusCode.InternalServerError
+            );
+        }
+    }
+
+    private static ApiResponse<object> InvalidResetRequest() =>
+        ApiResponse<object>.Failed(
+            "The password reset link is invalid or has expired.",
+            null,
+            (int)HttpStatusCode.BadRequest
+        );
 }

@@ -93,6 +93,8 @@ REST değil hub üzerinden yapmanızın bir nedeni de bu.
 | --- | --- | --- | --- |
 | POST | `/identity/register` | — | `{ userName, email, password, passwordConfirmation, deviceInfo, avatarUrl? }` |
 | POST | `/identity/login` | — | `{ userName, password, deviceInfo? }` |
+| POST | `/identity/forgot-password` | — | `{ email }` |
+| POST | `/identity/reset-password` | — | `{ email, token, newPassword, newPasswordConfirmation }` |
 | POST | `/identity/refresh-token` | — | `{ refreshToken, userId }` |
 | GET | `/identity/confirm-email?userId=&token=` | — | — |
 | POST | `/identity/resend-confirmation-email` | — | `{ email }` |
@@ -106,6 +108,13 @@ REST değil hub üzerinden yapmanızın bir nedeni de bu.
 `passwordConfirmation`, `password` ile birebir aynı olmalı. `deviceInfo`'yu login'de
 de göndermek oturum listesinde (`/my-sessions`) cihazın anlamlı görünmesini sağlar —
 örn. `"Chrome 120 / macOS"`.
+
+`forgot-password` güvenlik nedeniyle e-posta sistemde kayıtlı olsun veya olmasın her
+zaman aynı `200` yanıtını verir. E-postadaki bağlantı frontend'in
+`/reset-password?email=...&token=...` sayfasını açar; bu iki query değeri
+`reset-password` isteğinin gövdesine taşınmalıdır. Bağlantı tek kullanımlıktır ve 6
+saat geçerlidir. Başarılı sıfırlama kullanıcının bütün refresh token oturumlarını
+iptal eder.
 
 **Login/refresh yanıtı** `ApiResponse<T>` sarmalayıcısıyla döner — `statusCode` gövdenin
 **içinde de** vardır:
@@ -136,7 +145,8 @@ de göndermek oturum listesinde (`/my-sessions`) cihazın anlamlı görünmesini
 | Metot | Yol | Açıklama |
 | --- | --- | --- |
 | GET | `/identity/user/me` | Kendi profilim |
-| PUT | `/identity/user/update` | `{ userName?, bio?, avatarUrl? }` |
+| PUT | `/identity/user/update` | `{ userName, bio?, avatarUrl? }` |
+| PUT | `/identity/user/email` | `{ email }` — adresi değiştirir ve doğrulama maili yollar |
 | POST | `/identity/user/change-password` | `{ currentPassword, newPassword }` |
 | GET | `/identity/user/search?q=&page=&limit=` | Kullanıcı ara (arkadaş eklemek için) |
 
@@ -145,6 +155,10 @@ de göndermek oturum listesinde (`/my-sessions`) cihazın anlamlı görünmesini
 { "id": "...", "userName": "...", "email": "...", "bio": "...",
   "avatarUrl": "...", "emailConfirmed": true }
 ```
+
+`PUT /email` JWT gerektirir. Başarılı olduğunda `emailConfirmed` değeri `false`
+olur ve yeni adrese doğrulama bağlantısı gönderilir. Aynı doğrulanmamış adres tekrar
+gönderilirse adres değiştirilmeden doğrulama maili yeniden yollanır.
 
 `GET /search` → **`UserSearchResultDto[]`** (query param adı **`q`**)
 ```json

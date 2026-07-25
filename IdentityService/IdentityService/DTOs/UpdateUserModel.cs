@@ -7,9 +7,6 @@ namespace IdentityService.DTOs
         [Required]
         public string UserName { get; set; }
 
-        [Required]
-        public string Email { get; set; }
-
         public string AvatarUrl { get; set; }
 
         [MaxLength(190)]

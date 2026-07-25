@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using IdentityService.DTOs;
 using IdentityService.Interfaces;
+using IdentityService.Attributes;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +13,12 @@ namespace IdentityService.Controllers
     public class UserController : ControllerBase
     {
         private readonly IUserService _userService;
+        private readonly IConfiguration _configuration;
 
-        public UserController(IUserService userService)
+        public UserController(IUserService userService, IConfiguration configuration)
         {
             _userService = userService;
+            _configuration = configuration;
         }
 
         [HttpGet("me")]
@@ -40,6 +43,21 @@ namespace IdentityService.Controllers
                 return Ok(new { Message = "User updated successfully" });
             }
             return BadRequest(result.Errors);
+        }
+
+        [HttpPut("email")]
+        [ValidateModel]
+        public async Task<IActionResult> ChangeEmail([FromBody] ChangeEmailRequestDto model)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var confirmationUrl = _configuration["ClientApp:EmailConfirmationUrl"];
+            if (string.IsNullOrWhiteSpace(confirmationUrl))
+            {
+                confirmationUrl = $"{Request.Scheme}://{Request.Host}/api/Auth/confirm-email";
+            }
+
+            var result = await _userService.ChangeEmailAsync(userId, model, confirmationUrl);
+            return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
         [HttpPost("change-password")]

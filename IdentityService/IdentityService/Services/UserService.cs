@@ -46,12 +46,6 @@ namespace IdentityService.Services
             user.AvatarUrl = model.AvatarUrl;
             user.Bio = model.Bio;
 
-            if (user.Email != model.Email)
-            {
-                user.EmailConfirmed = false; // Email değiştiyse onay durumunu sıfırla
-                user.Email = model.Email;
-            }
-
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
             {
@@ -67,6 +61,82 @@ namespace IdentityService.Services
             }
 
             return result;
+        }
+
+        public async Task<ApiResponse<object>> ChangeEmailAsync(
+            string userId,
+            ChangeEmailRequestDto model,
+            string confirmationUrl
+        )
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogWarning("Email change failed: user {UserId} not found", userId);
+                return ApiResponse<object>.NotFound("User not found");
+            }
+
+            var emailChanged = !string.Equals(
+                user.Email,
+                model.Email,
+                System.StringComparison.OrdinalIgnoreCase
+            );
+
+            if (emailChanged)
+            {
+                var existingUser = await _userManager.FindByEmailAsync(model.Email);
+                if (existingUser != null && existingUser.Id != user.Id)
+                {
+                    return ApiResponse<object>.Failed(
+                        "Email could not be updated.",
+                        new[] { "Email is already taken." }
+                    );
+                }
+
+                var updateResult = await _userManager.SetEmailAsync(user, model.Email);
+                if (!updateResult.Succeeded)
+                {
+                    _logger.LogWarning(
+                        "Email change failed for user {UserId}. Errors: {Errors}",
+                        userId,
+                        string.Join(", ", updateResult.Errors.Select(e => e.Description))
+                    );
+                    return ApiResponse<object>.Failed(
+                        "Email could not be updated.",
+                        updateResult.Errors.Select(e => e.Description)
+                    );
+                }
+            }
+            else if (user.EmailConfirmed)
+            {
+                return ApiResponse<object>.Success(
+                    "This email address is already confirmed.",
+                    (int)System.Net.HttpStatusCode.OK
+                );
+            }
+
+            var emailResult = await _mailService.SendEmailConfirmationAsync(
+                user.Id,
+                confirmationUrl
+            );
+            if (!emailResult.IsSuccessfull)
+            {
+                _logger.LogError(
+                    "Email was updated but confirmation email could not be sent for user {UserId}.",
+                    userId
+                );
+                return ApiResponse<object>.Failed(
+                    "Email was updated, but the confirmation email could not be sent. Please try again.",
+                    emailResult.Errors,
+                    (int)System.Net.HttpStatusCode.InternalServerError
+                );
+            }
+
+            _logger.LogInformation("Email changed for user {UserId}; confirmation sent.", userId);
+            return ApiResponse<object>.Success(
+                "Email updated. Please check your new address for the confirmation link.",
+                (int)System.Net.HttpStatusCode.OK
+            );
         }
 
         public async Task<IdentityResult> DeleteUserAsync(string id)

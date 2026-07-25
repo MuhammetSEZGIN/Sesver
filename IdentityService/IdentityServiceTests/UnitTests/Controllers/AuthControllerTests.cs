@@ -8,6 +8,7 @@ using IdentityService.Interfaces;
 using IdentityService.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
 
@@ -29,7 +30,14 @@ namespace IdentityServiceTests.UnitTests.Controllers
             _controller = new AuthController(
                 _mockAuthService.Object,
                 _mockEmailService.Object,
-                _mockRegisterService.Object
+                _mockRegisterService.Object,
+                new ConfigurationBuilder().AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["ClientApp:EmailConfirmationUrl"] =
+                            "https://api.example.com/identity/confirm-email",
+                    }
+                ).Build()
             );
 
             // Setup HttpContext for URL generation
@@ -140,6 +148,64 @@ namespace IdentityServiceTests.UnitTests.Controllers
                 x => x.SendEmailConfirmationAsync(It.IsAny<string>(), It.IsAny<string>()),
                 Times.Never
             );
+        }
+
+        #endregion
+
+        #region Password Reset Tests
+
+        [Fact]
+        public async Task ForgotPassword_AlwaysReturnsGenericSuccess()
+        {
+            var model = new ForgotPasswordRequestDto { Email = "test@example.com" };
+            _mockEmailService
+                .Setup(x => x.SendPasswordResetAsync(model.Email))
+                .ReturnsAsync(
+                    ApiResponse<object>.Failed(
+                        "SMTP failure",
+                        statusCode: (int)HttpStatusCode.InternalServerError
+                    )
+                );
+
+            var result = await _controller.ForgotPassword(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal((int)HttpStatusCode.OK, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.True(response.IsSuccessfull);
+            Assert.Equal(
+                "If an account exists for this email, a password reset link has been sent.",
+                response.Message
+            );
+            _mockEmailService.Verify(x => x.SendPasswordResetAsync(model.Email), Times.Once);
+        }
+
+        [Fact]
+        public async Task ResetPassword_ReturnsServiceResult()
+        {
+            var model = new ResetPasswordRequestDto
+            {
+                Email = "test@example.com",
+                Token = "token",
+                NewPassword = "NewPass@123",
+                NewPasswordConfirmation = "NewPass@123",
+            };
+            _mockEmailService
+                .Setup(x => x.ResetPasswordAsync(model))
+                .ReturnsAsync(
+                    ApiResponse<object>.Success(
+                        "Password reset.",
+                        (int)HttpStatusCode.OK
+                    )
+                );
+
+            var result = await _controller.ResetPassword(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal((int)HttpStatusCode.OK, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.True(response.IsSuccessfull);
+            _mockEmailService.Verify(x => x.ResetPasswordAsync(model), Times.Once);
         }
 
         #endregion

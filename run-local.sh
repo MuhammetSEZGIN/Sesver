@@ -19,6 +19,13 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Yerel sırları repoya almadan .env üzerinden yükle.
+if [[ -f .env ]]; then
+  set -a
+  source .env
+  set +a
+fi
+
 # Job control açık: her arka plan işi kendi process group'unu alır, böylece
 # cleanup() sadece dış subshell'i değil (dotnet run / mvnw'nin fork ettiği
 # gerçek uygulama process'i dahil) tüm grubu öldürebilir.
@@ -47,6 +54,15 @@ LOCAL_RABBIT_VHOST="${RABBITMQ_VHOST:-/}"
 LOCAL_RABBIT_PORT="${RABBITMQ_PORT:-5672}"
 LOCAL_RABBIT_USER="${RABBITMQ_USER:-guest}"
 LOCAL_RABBIT_PASSWORD="${RABBITMQ_PASSWORD:-guest}"
+LOCAL_SMTP_ENABLED="${SMTP_ENABLED:-false}"
+LOCAL_SMTP_HOST="${SMTP_HOST:-}"
+LOCAL_SMTP_PORT="${SMTP_PORT:-2525}"
+LOCAL_SMTP_FROM_NAME="${SMTP_FROM_NAME:-Sesver}"
+LOCAL_SMTP_FROM_ADDRESS="${SMTP_FROM_ADDRESS:-}"
+LOCAL_SMTP_USERNAME="${SMTP_USERNAME:-}"
+LOCAL_SMTP_PASSWORD="${SMTP_PASSWORD:-}"
+LOCAL_PASSWORD_RESET_URL="${PASSWORD_RESET_URL:-http://localhost:5173/reset-password}"
+LOCAL_EMAIL_CONFIRMATION_URL="${EMAIL_CONFIRMATION_URL:-http://localhost:5173/confirm-email}"
 
 check_local_infrastructure() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -124,7 +140,12 @@ start_dotnet "identityservice" "IdentityService/IdentityService/IdentityService.
   "Jwt__Key=$LOCAL_JWT_KEY" "Jwt__Issuer=$LOCAL_JWT_ISSUER" "Jwt__Audience=$LOCAL_JWT_AUDIENCE" \
   "RabbitMq__HostName=$LOCAL_RABBIT_HOST" "RabbitMq__VirtualHost=$LOCAL_RABBIT_VHOST" \
   "RabbitMq__Port=$LOCAL_RABBIT_PORT" "RabbitMq__UserName=$LOCAL_RABBIT_USER" \
-  "RabbitMq__Password=$LOCAL_RABBIT_PASSWORD" "Smtp__Enabled=false"
+  "RabbitMq__Password=$LOCAL_RABBIT_PASSWORD" \
+  "Smtp__Enabled=$LOCAL_SMTP_ENABLED" "Smtp__Host=$LOCAL_SMTP_HOST" \
+  "Smtp__Port=$LOCAL_SMTP_PORT" "Smtp__FromName=$LOCAL_SMTP_FROM_NAME" \
+  "Smtp__FromAddress=$LOCAL_SMTP_FROM_ADDRESS" "Smtp__Username=$LOCAL_SMTP_USERNAME" \
+  "Smtp__Password=$LOCAL_SMTP_PASSWORD" "ClientApp__PasswordResetUrl=$LOCAL_PASSWORD_RESET_URL" \
+  "ClientApp__EmailConfirmationUrl=$LOCAL_EMAIL_CONFIRMATION_URL"
 
 start_dotnet "clanservice" "ClanService/ClanService/ClanService.csproj" "http://localhost:5074" \
   "ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=ClanDb;Username=admin;Password=admin123" \

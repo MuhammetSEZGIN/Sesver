@@ -9,6 +9,11 @@ namespace IdentityService.Interfaces;
 public interface IUserService
 {
     Task<IdentityResult> UpdateUserAsync(string userId, UpdateUserModel model);
+    Task<ApiResponse<object>> ChangeEmailAsync(
+        string userId,
+        ChangeEmailRequestDto model,
+        string confirmationUrl
+    );
     Task <IdentityResult>  DeleteUserAsync(string id);
     Task<ApplicationUser> GetUserByIdAsync(string id);
     Task<UserMeDto> GetMeAsync(string userId);
