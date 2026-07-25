@@ -7,6 +7,8 @@ namespace PresenceService.Hubs;
 [Authorize(AuthenticationSchemes = "Bearer")]
 public class PresenceHub : Hub
 {
+    private const string DmVoiceRoomPrefix = "dm-";
+
     private readonly IPresenceRepository _repository;
     private readonly ILogger<PresenceHub> _logger;
 
@@ -14,6 +16,21 @@ public class PresenceHub : Hub
     {
         _repository = repository;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// DM ses odaları için yayın grubu "conversation_{conversationId}", klan ses
+    /// odaları için "clan_{clanId}" kullanılır. voiceChannelId "dm-" ile başlıyorsa
+    /// (clanId null demektir) conversationId ondan türetilir.
+    /// </summary>
+    private static string VoiceBroadcastGroup(string? clanId, string voiceChannelId)
+    {
+        if (string.IsNullOrEmpty(clanId) && voiceChannelId != null && voiceChannelId.StartsWith(DmVoiceRoomPrefix))
+        {
+            var conversationId = voiceChannelId[DmVoiceRoomPrefix.Length..];
+            return $"conversation_{conversationId}";
+        }
+        return $"clan_{clanId}";
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -43,9 +60,9 @@ public class PresenceHub : Hub
                 var (clanId, channelId, uid) = voiceInfo.Value;
                 _logger.LogInformation(
                     "Connection dropped — removing user {UserId} from voice channel {ChannelId} in clan {ClanId}",
-                    uid, channelId, clanId);
+                    uid, channelId, clanId ?? "(dm)");
 
-                await Clients.Group($"clan_{clanId}").SendAsync("UserLeftVoice", new
+                await Clients.Group(VoiceBroadcastGroup(clanId, channelId)).SendAsync("UserLeftVoice", new
                 {
                     clanId,
                     voiceChannelId = channelId,
@@ -61,6 +78,7 @@ public class PresenceHub : Hub
             }
 
             await _repository.RemoveConnectionClans(Context.ConnectionId);
+            await _repository.RemoveConnectionConversations(Context.ConnectionId);
         }
         await base.OnDisconnectedAsync(exception);
     }
@@ -87,6 +105,21 @@ public class PresenceHub : Hub
     }
 
     /// <summary>
+    /// Client calls this after connecting to subscribe to DM conversation presence events
+    /// (e.g. "is the other participant currently in the DM voice room").
+    /// </summary>
+    public async Task SubscribeToConversations(List<string> conversationIds)
+    {
+        var userId = Context.UserIdentifier;
+        if (string.IsNullOrEmpty(userId) || conversationIds == null || conversationIds.Count == 0) return;
+
+        foreach (var conversationId in conversationIds)
+            await Groups.AddToGroupAsync(Context.ConnectionId, $"conversation_{conversationId}");
+
+        await _repository.SetConnectionConversations(Context.ConnectionId, conversationIds);
+    }
+
+    /// <summary>
     /// Returns which of the given userIds are currently online.
     /// </summary>
     public async Task GetOnlineUsers(List<string> userIds)
@@ -103,21 +136,25 @@ public class PresenceHub : Hub
     // ── Voice channel presence ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Client calls this when joining a LiveKit voice room.
+    /// Client calls this when joining a LiveKit voice room. clanId is null for DM voice
+    /// rooms (voiceChannelId = "dm-{conversationId}"); presence is broadcast to
+    /// "conversation_{conversationId}" instead of a clan group in that case.
     /// </summary>
-    public async Task JoinVoiceChannel(string clanId, string voiceChannelId, string userName)
+    public async Task JoinVoiceChannel(string? clanId, string voiceChannelId, string userName)
     {
         var userId = Context.UserIdentifier;
         if (string.IsNullOrEmpty(userId)) return;
 
-        // Ensure the connection is in the clan group (may already be from SubscribeToClans)
-        await Groups.AddToGroupAsync(Context.ConnectionId, $"clan_{clanId}");
+        var group = VoiceBroadcastGroup(clanId, voiceChannelId);
+
+        // Ensure the connection is in the broadcast group (may already be from SubscribeToClans/SubscribeToConversations)
+        await Groups.AddToGroupAsync(Context.ConnectionId, group);
 
         await _repository.JoinVoiceChannel(Context.ConnectionId, userId, userName, clanId, voiceChannelId);
 
-        _logger.LogInformation("User {UserId} joined voice channel {ChannelId} in clan {ClanId}", userId, voiceChannelId, clanId);
+        _logger.LogInformation("User {UserId} joined voice channel {ChannelId} in clan {ClanId}", userId, voiceChannelId, clanId ?? "(dm)");
 
-        await Clients.Group($"clan_{clanId}").SendAsync("UserJoinedVoice", new
+        await Clients.Group(group).SendAsync("UserJoinedVoice", new
         {
             clanId,
             voiceChannelId,
@@ -136,9 +173,9 @@ public class PresenceHub : Hub
 
         var (clanId, channelId, userId) = info.Value;
 
-        _logger.LogInformation("User {UserId} left voice channel {ChannelId} in clan {ClanId}", userId, channelId, clanId);
+        _logger.LogInformation("User {UserId} left voice channel {ChannelId} in clan {ClanId}", userId, channelId, clanId ?? "(dm)");
 
-        await Clients.Group($"clan_{clanId}").SendAsync("UserLeftVoice", new
+        await Clients.Group(VoiceBroadcastGroup(clanId, channelId)).SendAsync("UserLeftVoice", new
         {
             clanId,
             voiceChannelId = channelId,

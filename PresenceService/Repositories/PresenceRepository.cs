@@ -12,11 +12,17 @@ public class PresenceRepository : IPresenceRepository
     // Clan subscriptions per connection: connectionId → clanIds
     private readonly ConcurrentDictionary<string, List<string>> _connectionClans = new();
 
-    // Voice channel data: clanId → voiceChannelId → participants
+    // DM conversation subscriptions per connection: connectionId → conversationIds
+    private readonly ConcurrentDictionary<string, List<string>> _connectionConversations = new();
+
+    // Voice channel data: clanId → voiceChannelId → participants.
+    // DM voice rooms (clanId == null) are bucketed under this sentinel key;
+    // voiceChannelId ("dm-{conversationId}") is already globally unique so no collisions occur.
+    private const string DmClanBucket = "__dm__";
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<UserInfo>>> _voicePresence = new();
 
     // Voice connection tracking for cleanup: connectionId → (ClanId, ChannelId, UserId)
-    private readonly ConcurrentDictionary<string, (string ClanId, string ChannelId, string UserId)> _voiceConnections = new();
+    private readonly ConcurrentDictionary<string, (string? ClanId, string ChannelId, string UserId)> _voiceConnections = new();
 
     // ── Online presence ────────────────────────────────────────────────────────
 
@@ -55,11 +61,32 @@ public class PresenceRepository : IPresenceRepository
         return Task.CompletedTask;
     }
 
+    // ── DM conversation subscriptions ──────────────────────────────────────────
+
+    public Task SetConnectionConversations(string connectionId, List<string> conversationIds)
+    {
+        _connectionConversations[connectionId] = conversationIds;
+        return Task.CompletedTask;
+    }
+
+    public Task<List<string>> GetConnectionConversations(string connectionId)
+    {
+        _connectionConversations.TryGetValue(connectionId, out var conversations);
+        return Task.FromResult(conversations ?? new List<string>());
+    }
+
+    public Task RemoveConnectionConversations(string connectionId)
+    {
+        _connectionConversations.TryRemove(connectionId, out _);
+        return Task.CompletedTask;
+    }
+
     // ── Voice channel presence ─────────────────────────────────────────────────
 
-    public Task JoinVoiceChannel(string connectionId, string userId, string userName, string clanId, string voiceChannelId)
+    public Task JoinVoiceChannel(string connectionId, string userId, string userName, string? clanId, string voiceChannelId)
     {
-        var channels = _voicePresence.GetOrAdd(clanId, _ => new ConcurrentDictionary<string, List<UserInfo>>());
+        var bucket = string.IsNullOrEmpty(clanId) ? DmClanBucket : clanId;
+        var channels = _voicePresence.GetOrAdd(bucket, _ => new ConcurrentDictionary<string, List<UserInfo>>());
         var participants = channels.GetOrAdd(voiceChannelId, _ => new List<UserInfo>());
 
         lock (participants)
@@ -72,13 +99,13 @@ public class PresenceRepository : IPresenceRepository
         return Task.CompletedTask;
     }
 
-    public Task<(string ClanId, string ChannelId, string UserId)?> LeaveVoiceChannel(string connectionId)
+    public Task<(string? ClanId, string ChannelId, string UserId)?> LeaveVoiceChannel(string connectionId)
     {
         if (!_voiceConnections.TryRemove(connectionId, out var info))
-            return Task.FromResult<(string, string, string)?>(null);
+            return Task.FromResult<(string?, string, string)?>(null);
 
         RemoveVoiceParticipant(info.ClanId, info.ChannelId, info.UserId);
-        return Task.FromResult<(string, string, string)?>(info);
+        return Task.FromResult<(string?, string, string)?>(info);
     }
 
     public Task<Dictionary<string, List<UserInfo>>> GetVoiceChannelParticipants(string clanId)
@@ -154,9 +181,10 @@ public async Task DeleteVoiceChannel(string clanId, string channelId)
 
     // ── Helpers ────────────────────────────────────────────────────────────────
 
-    private void RemoveVoiceParticipant(string clanId, string voiceChannelId, string userId)
+    private void RemoveVoiceParticipant(string? clanId, string voiceChannelId, string userId)
     {
-        if (!_voicePresence.TryGetValue(clanId, out var channels) ||
+        var bucket = string.IsNullOrEmpty(clanId) ? DmClanBucket : clanId;
+        if (!_voicePresence.TryGetValue(bucket, out var channels) ||
             !channels.TryGetValue(voiceChannelId, out var participants))
             return;
 

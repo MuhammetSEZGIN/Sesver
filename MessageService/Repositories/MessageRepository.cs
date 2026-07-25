@@ -115,4 +115,21 @@ public class MessageRepository : Repository<Message, ObjectId>, IMessageReposito
         return result.IsAcknowledged && result.DeletedCount > 0;
     }
 
+    public async Task<Dictionary<string, Message>> GetLastMessagesByChannelIdsAsync(IEnumerable<string> channelIds)
+    {
+        var ids = channelIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return new Dictionary<string, Message>();
+        }
+
+        var pipeline = _context.Messages.Aggregate()
+            .Match(x => ids.Contains(x.ChannelId))
+            .SortByDescending(x => x.CreatedAt)
+            .Group(x => x.ChannelId, g => g.First());
+
+        var results = await pipeline.ToListAsync();
+        return results.ToDictionary(m => m.ChannelId, m => m);
+    }
+
 }

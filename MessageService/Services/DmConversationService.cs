@@ -1,5 +1,6 @@
 using MessageService.Data;
 using MessageService.DTOs;
+using MessageService.Interfaces.Repositories.IUserRepository;
 using MessageService.Interfaces.Services;
 using MessageService.Models;
 using MongoDB.Bson;
@@ -10,11 +11,19 @@ namespace MessageService.Services;
 public class DmConversationService : IDmConversationService
 {
     private readonly IMongoDbContext _context;
+    private readonly IUserRepository _userRepository;
+    private readonly IMessageRepository _messageRepository;
     private readonly ILogger<DmConversationService> _logger;
 
-    public DmConversationService(IMongoDbContext context, ILogger<DmConversationService> logger)
+    public DmConversationService(
+        IMongoDbContext context,
+        IUserRepository userRepository,
+        IMessageRepository messageRepository,
+        ILogger<DmConversationService> logger)
     {
         _context = context;
+        _userRepository = userRepository;
+        _messageRepository = messageRepository;
         _logger = logger;
     }
 
@@ -41,7 +50,7 @@ public class DmConversationService : IDmConversationService
 
         if (existing != null)
         {
-            return ToDto(existing, userId);
+            return await ToDtoAsync(existing, userId);
         }
 
         var conversation = new DmConversation
@@ -64,7 +73,7 @@ public class DmConversationService : IDmConversationService
                 .FirstOrDefaultAsync();
         }
 
-        return ToDto(conversation, userId);
+        return await ToDtoAsync(conversation, userId);
     }
 
     public async Task<List<DmConversationDto>> GetConversationsAsync(string userId)
@@ -74,7 +83,34 @@ public class DmConversationService : IDmConversationService
             .SortByDescending(d => d.CreatedAt)
             .ToListAsync();
 
-        return conversations.Select(c => ToDto(c, userId)).ToList();
+        if (conversations.Count == 0)
+        {
+            return new List<DmConversationDto>();
+        }
+
+        var channelIds = conversations.Select(c => c.Id.ToString()).ToList();
+        var lastMessages = await _messageRepository.GetLastMessagesByChannelIdsAsync(channelIds);
+
+        var dtos = new List<DmConversationDto>();
+        foreach (var conversation in conversations)
+        {
+            var otherUserId = conversation.UserAId == userId ? conversation.UserBId : conversation.UserAId;
+            var otherUser = await _userRepository.GetByIdAsync(otherUserId);
+            lastMessages.TryGetValue(conversation.Id.ToString(), out var lastMessage);
+
+            dtos.Add(new DmConversationDto
+            {
+                ConversationId = conversation.Id.ToString(),
+                OtherUserId = otherUserId,
+                OtherUserName = otherUser?.UserName,
+                OtherAvatarUrl = otherUser?.AvatarUrl,
+                LastMessage = lastMessage?.Text,
+                LastMessageAt = lastMessage?.CreatedAt,
+                CreatedAt = conversation.CreatedAt,
+            });
+        }
+
+        return dtos;
     }
 
     public async Task<bool> IsParticipantAsync(string conversationId, string userId)
@@ -91,15 +127,18 @@ public class DmConversationService : IDmConversationService
         return conversation != null && conversation.HasParticipant(userId);
     }
 
-    private static DmConversationDto ToDto(DmConversation conversation, string requestingUserId)
+    private async Task<DmConversationDto> ToDtoAsync(DmConversation conversation, string requestingUserId)
     {
         var otherUserId =
             conversation.UserAId == requestingUserId ? conversation.UserBId : conversation.UserAId;
+        var otherUser = await _userRepository.GetByIdAsync(otherUserId);
 
         return new DmConversationDto
         {
-            Id = conversation.Id.ToString(),
+            ConversationId = conversation.Id.ToString(),
             OtherUserId = otherUserId,
+            OtherUserName = otherUser?.UserName,
+            OtherAvatarUrl = otherUser?.AvatarUrl,
             CreatedAt = conversation.CreatedAt,
         };
     }

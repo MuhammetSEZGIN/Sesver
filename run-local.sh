@@ -19,6 +19,11 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Job control açık: her arka plan işi kendi process group'unu alır, böylece
+# cleanup() sadece dış subshell'i değil (dotnet run / mvnw'nin fork ettiği
+# gerçek uygulama process'i dahil) tüm grubu öldürebilir.
+set -m
+
 RUN_VOICE=true
 RUN_AUTH=true
 for arg in "$@"; do
@@ -57,7 +62,14 @@ cleanup() {
   echo ""
   echo "Stopping all services..."
   for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null || true
+    # Negatif PID = process group'un tamamını hedefler (dotnet run / mvnw'nin
+    # fork ettiği torun process'ler dahil), tek başına "kill $pid" sadece
+    # subshell'i öldürüp asıl uygulamayı arkada yetim bırakırdı.
+    kill -TERM -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in "${PIDS[@]}"; do
+    kill -KILL -- "-$pid" 2>/dev/null || true
   done
   wait 2>/dev/null || true
   echo "Stopped."

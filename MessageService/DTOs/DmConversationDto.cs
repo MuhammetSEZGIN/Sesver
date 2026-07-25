@@ -9,7 +9,12 @@ public class DmConversationCreateDto
 
 public class DmConversationDto
 {
-    public string Id { get; set; }
+    /// <summary>Aynı zamanda MessageDto.ChannelId olarak kullanılır.</summary>
+    public string ConversationId { get; set; }
     public string OtherUserId { get; set; }
+    public string OtherUserName { get; set; }
+    public string OtherAvatarUrl { get; set; }
+    public string LastMessage { get; set; }
+    public DateTime? LastMessageAt { get; set; }
     public DateTime CreatedAt { get; set; }
 }

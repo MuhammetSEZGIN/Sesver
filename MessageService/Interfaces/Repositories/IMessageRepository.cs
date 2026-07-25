@@ -12,4 +12,5 @@ public interface IMessageRepository : IRepository<Message, ObjectId>
     Task<bool> DeleteMessagesOfChannelByChannelId(string channelId);
     Task<bool> DeleteMessagesByMessageId(ObjectId messageId);
     Task<bool> DeleteMessagesByClanId(string clanId);
+    Task<Dictionary<string, Message>> GetLastMessagesByChannelIdsAsync(IEnumerable<string> channelIds);
 }

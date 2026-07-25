@@ -1,9 +1,14 @@
 using System.Text;
+using IdentityService.Handlers;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.IdentityModel.Tokens;
 
-
-// we use this in apigateway. So we dont use it in IdentityService.
-// but i want it to be here for future use. 
+// JWT'nin gercek dogrulamasi ApiGateway'de yapiliyor; alt servisler (ClanService,
+// MessageService ve artik IdentityService de) gateway'in enjekte ettigi X-User-Id /
+// X-Clan-Role header'larina guveniyor (GatewayAuthenticationHandler, default scheme).
+// JwtBearer semasi kayitli kaliyor ama sadece ileride servisin token'i dogrudan
+// (gateway'siz) dogrulamasi gerekirse kullanilmak uzere - su an hicbir [Authorize]
+// bunu varsayilan olarak kullanmiyor.
 namespace IdentityService.Extensions
 {
     public static class AuthenticationExtensions
@@ -14,11 +19,11 @@ namespace IdentityService.Extensions
         )
         {
             services
-                .AddAuthentication(options =>
-                {
-                    options.DefaultAuthenticateScheme = "JwtBearer";
-                    options.DefaultChallengeScheme = "JwtBearer";
-                })
+                .AddAuthentication("GatewayAuth")
+                .AddScheme<AuthenticationSchemeOptions, GatewayAuthenticationHandler>(
+                    "GatewayAuth",
+                    null
+                )
                 .AddJwtBearer(
                     "JwtBearer",
                     jwtBearerOptions =>

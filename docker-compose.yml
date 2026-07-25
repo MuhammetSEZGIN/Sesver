@@ -230,8 +230,10 @@ services:
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       LIVEKIT_URL: "http://livekit-server:7880"
+      MESSAGE_SERVICE_URL: "http://messageservice:80"
     depends_on:
       - livekit-server
+      - messageservice
   authenticationservice:
     build:
       context: AuthenticationService

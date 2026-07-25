@@ -60,6 +60,30 @@ builder
     });
 builder.Services.AddAuthorization();
 
+// Ocelot, eşleşmeyen bir path için bile authentication middleware'ini
+// route matching'den ÖNCE çalıştırıyor; bu yüzden var olmayan bir route'a
+// yetkisiz istek atıldığında 404 yerine 401 dönüyor ve gerçek hata maskeleniyor.
+// Çözüm: ocelot.json'daki UpstreamPathTemplate'lerden regex üretip, path hiçbiriyle
+// eşleşmiyorsa auth'a hiç girmeden 404 dön.
+var upstreamRoutePatterns = (builder.Configuration
+    .GetSection("Routes")
+    .Get<List<Dictionary<string, object>>>() ?? new List<Dictionary<string, object>>())
+    .Select(route => route.TryGetValue("UpstreamPathTemplate", out var template) ? template?.ToString() : null)
+    .Where(template => !string.IsNullOrEmpty(template))
+    .Select(template => BuildUpstreamRegex(template!))
+    .ToList();
+
+static Regex BuildUpstreamRegex(string template)
+{
+    // {everything} -> .* (alt path segmentlerini de yutar), diğer {param}'lar -> [^/]+
+    var pattern = Regex.Replace(template, @"\{everything\}", "__EVERYTHING__");
+    pattern = Regex.Replace(pattern, @"\{[^/{}]+\}", "[^/]+");
+    pattern = Regex.Escape(pattern).Replace("__EVERYTHING__", ".*");
+    // Regex.Escape yukarıda [^/]+ içindeki karakterleri de escape eder, geri düzelt
+    pattern = pattern.Replace(@"\[\^/\]\+", "[^/]+");
+    return new Regex("^" + pattern + "/?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+}
+
 var authServiceBaseUrl = builder.Configuration["AuthService:BaseUrl"]
     ?? (builder.Environment.IsEnvironment("Docker")
         ? "http://authenticationservice:8081"
@@ -86,6 +110,30 @@ app.Use(async (context, next) =>
     context.Request.Headers.Remove("X-User-Id");
     context.Request.Headers.Remove("X-User-Name");
     context.Request.Headers.Remove("X-User-Avatar");
+    await next();
+});
+
+// Route matching'i authentication'dan ÖNCE yap: path hiçbir Ocelot route'una
+// eşleşmiyorsa 401 yerine 404 dön (bkz. yukarıdaki upstreamRoutePatterns yorumu).
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    var matchesKnownRoute = upstreamRoutePatterns.Any(pattern => pattern.IsMatch(path));
+
+    if (!matchesKnownRoute)
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        context.Response.ContentType = "application/problem+json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            type = "https://tools.ietf.org/html/rfc7231#section-6.5.4",
+            title = "Route not found",
+            status = 404,
+            detail = $"No route matches path '{path}'."
+        });
+        return;
+    }
+
     await next();
 });
 

@@ -32,6 +32,7 @@ export function jwtAuth(req: Request, res: Response, next: NextFunction): void {
     }
 
     res.locals.user = { userId, userName };
+    res.locals.rawToken = token;
     next();
   } catch {
     res.status(401).json({ error: "Invalid token" });
