@@ -7,6 +7,8 @@ using MessageService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using MongoDB.Bson;
+using MassTransit;
+using Shared.Contracts;
 
 namespace MessageService.Hubs;
 
@@ -19,13 +21,15 @@ public class MessageHub : Hub
     private readonly ILogger<MessageHub> _logger;
     private readonly IBackgroundTaskQueue _backgroundTaskQueue;
     private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly IMessageConnectionTracker _connectionTracker;
 
     public MessageHub(IMessageService messageService,
         ILogger<MessageHub> logger,
         IServiceScopeFactory serviceScopeFactory,
         IBackgroundTaskQueue backgroundTaskQueue,
         IUserService userService,
-        IDmConversationService dmConversationService
+        IDmConversationService dmConversationService,
+        IMessageConnectionTracker connectionTracker
       )
     {
         _backgroundTaskQueue = backgroundTaskQueue;
@@ -33,6 +37,7 @@ public class MessageHub : Hub
         _messageService = messageService;
         _userService = userService;
         _dmConversationService = dmConversationService;
+        _connectionTracker = connectionTracker;
         _logger = logger;
     }
 
@@ -88,6 +93,16 @@ public class MessageHub : Hub
                 CreatedAt = DateTime.UtcNow
             };
 
+            string? notificationRecipientId = null;
+            if (string.IsNullOrEmpty(clanId) && _dmConversationService.IsDmConversationId(channelId))
+            {
+                var callContext = await _dmConversationService.GetCallContextAsync(channelId, userId);
+                if (callContext != null && !_connectionTracker.IsUserInChannel(callContext.OtherUserId, channelId))
+                {
+                    notificationRecipientId = callContext.OtherUserId;
+                }
+            }
+
             await Clients.Group(channelId.ToString()).SendAsync("ReceiveMessage", messageDto);
 
             var newMessage = new Message
@@ -106,8 +121,37 @@ public class MessageHub : Hub
                 {
                     using var scope = _serviceScopeFactory.CreateScope();
                     var messageService = scope.ServiceProvider.GetRequiredService<IMessageService>();
-                    await messageService.CreateMessage(newMessage);
+                    var saveResult = await messageService.CreateMessage(newMessage);
+                    if (!saveResult.IsSuccess)
+                    {
+                        _logger.LogError("Message {MessageId} could not be saved: {Reason}", newMessage.Id, saveResult.Message);
+                        return;
+                    }
+
                     _logger.LogInformation("Message {MessageId} succesfully saved to database", newMessage.Id);
+
+                    if (!string.IsNullOrEmpty(notificationRecipientId))
+                    {
+                        try
+                        {
+                            var publisher = scope.ServiceProvider.GetRequiredService<IPublishEndpoint>();
+                            await publisher.Publish(new NotificationRequestedMessage
+                            {
+                                EventId = Guid.NewGuid(),
+                                UserId = notificationRecipientId,
+                                Type = NotificationType.DirectMessageReceived,
+                                Title = $"New message from {messageDto.UserName}",
+                                Body = message.Length <= 120 ? message : $"{message[..117]}...",
+                                ActorUserId = userId,
+                                TargetId = channelId,
+                                CreatedAt = messageDto.CreatedAt,
+                            }, token);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Could not publish notification for message {MessageId}", newMessage.Id);
+                        }
+                    }
                 }
                 catch (Exception e)
                 {
@@ -223,10 +267,22 @@ public class MessageHub : Hub
         }
 
         await Groups.AddToGroupAsync(Context.ConnectionId, channelId);
+        _connectionTracker.JoinChannel(userId, Context.ConnectionId, channelId);
     }
 
     public async Task LeaveChannel(string channelId)
     {
+        var userId = GetUserId();
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, channelId);
+        if (!string.IsNullOrEmpty(userId))
+        {
+            _connectionTracker.LeaveChannel(userId, Context.ConnectionId, channelId);
+        }
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        _connectionTracker.RemoveConnection(Context.ConnectionId);
+        await base.OnDisconnectedAsync(exception);
     }
 }

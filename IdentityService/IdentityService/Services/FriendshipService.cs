@@ -9,6 +9,7 @@ using IdentityService.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Shared.Contracts;
 
 namespace IdentityService.Services;
 
@@ -17,17 +18,27 @@ public class FriendshipService : IFriendshipService
     private readonly IdentityDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<FriendshipService> _logger;
+    private readonly IIdentityProducer _producer;
 
     public FriendshipService(
         IdentityDbContext context,
         UserManager<ApplicationUser> userManager,
-        ILogger<FriendshipService> logger
+        ILogger<FriendshipService> logger,
+        IIdentityProducer producer
     )
     {
         _context = context;
         _userManager = userManager;
         _logger = logger;
+        _producer = producer;
     }
+
+    public Task<List<string>> GetFriendIdsAsync(string userId) =>
+        _context.Friendships.AsNoTracking()
+            .Where(f => f.Status == FriendshipStatus.Accepted &&
+                (f.RequesterId == userId || f.AddresseeId == userId))
+            .Select(f => f.RequesterId == userId ? f.AddresseeId : f.RequesterId)
+            .ToListAsync();
 
     public async Task<List<FriendshipReadDto>> GetFriendsAsync(string userId)
     {
@@ -133,6 +144,28 @@ public class FriendshipService : IFriendshipService
                 existing.RespondedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
+                await PublishSafelyAsync(
+                    new NotificationRequestedMessage
+                    {
+                        EventId = Guid.NewGuid(),
+                        UserId = existing.RequesterId,
+                        Type = NotificationType.FriendRequestAccepted,
+                        Title = "Friend request accepted",
+                        Body = "Your friend request was accepted.",
+                        ActorUserId = requesterId,
+                        TargetId = existing.Id.ToString(),
+                        CreatedAt = DateTime.UtcNow,
+                    },
+                    new FriendshipRelationshipChangedMessage
+                    {
+                        EventId = Guid.NewGuid(),
+                        UserAId = existing.RequesterId,
+                        UserBId = existing.AddresseeId,
+                        Status = FriendshipRelationshipStatus.Accepted,
+                        ChangedAt = DateTime.UtcNow,
+                    }
+                );
+
                 var requester = await _userManager.FindByIdAsync(existing.RequesterId);
                 return (
                     true,
@@ -164,6 +197,18 @@ public class FriendshipService : IFriendshipService
         };
         _context.Friendships.Add(friendship);
         await _context.SaveChangesAsync();
+
+        await PublishNotificationSafelyAsync(new NotificationRequestedMessage
+        {
+            EventId = Guid.NewGuid(),
+            UserId = addresseeId,
+            Type = NotificationType.FriendRequestReceived,
+            Title = "New friend request",
+            Body = "You received a new friend request.",
+            ActorUserId = requesterId,
+            TargetId = friendship.Id.ToString(),
+            CreatedAt = DateTime.UtcNow,
+        });
 
         _logger.LogInformation(
             "Friend request sent from {RequesterId} to {AddresseeId}",
@@ -206,6 +251,28 @@ public class FriendshipService : IFriendshipService
         friendship.Status = FriendshipStatus.Accepted;
         friendship.RespondedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
+        await PublishSafelyAsync(
+            new NotificationRequestedMessage
+            {
+                EventId = Guid.NewGuid(),
+                UserId = friendship.RequesterId,
+                Type = NotificationType.FriendRequestAccepted,
+                Title = "Friend request accepted",
+                Body = "Your friend request was accepted.",
+                ActorUserId = friendship.AddresseeId,
+                TargetId = friendship.Id.ToString(),
+                CreatedAt = DateTime.UtcNow,
+            },
+            new FriendshipRelationshipChangedMessage
+            {
+                EventId = Guid.NewGuid(),
+                UserAId = friendship.RequesterId,
+                UserBId = friendship.AddresseeId,
+                Status = FriendshipRelationshipStatus.Accepted,
+                ChangedAt = DateTime.UtcNow,
+            }
+        );
 
         return (true, "Friend request accepted");
     }
@@ -250,6 +317,47 @@ public class FriendshipService : IFriendshipService
         _context.Friendships.Remove(friendship);
         await _context.SaveChangesAsync();
 
+        await PublishRelationshipSafelyAsync(new FriendshipRelationshipChangedMessage
+        {
+            EventId = Guid.NewGuid(),
+            UserAId = friendship.RequesterId,
+            UserBId = friendship.AddresseeId,
+            Status = FriendshipRelationshipStatus.Removed,
+            ChangedAt = DateTime.UtcNow,
+        });
+
         return (true, "Friend removed");
+    }
+
+    private async Task PublishSafelyAsync(
+        NotificationRequestedMessage notification,
+        FriendshipRelationshipChangedMessage relationship)
+    {
+        await PublishNotificationSafelyAsync(notification);
+        await PublishRelationshipSafelyAsync(relationship);
+    }
+
+    private async Task PublishNotificationSafelyAsync(NotificationRequestedMessage message)
+    {
+        try
+        {
+            await _producer.PublishNotificationAsync(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not publish notification event {EventId}", message.EventId);
+        }
+    }
+
+    private async Task PublishRelationshipSafelyAsync(FriendshipRelationshipChangedMessage message)
+    {
+        try
+        {
+            await _producer.PublishFriendshipRelationshipChangedAsync(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not publish friendship relationship event {EventId}", message.EventId);
+        }
     }
 }

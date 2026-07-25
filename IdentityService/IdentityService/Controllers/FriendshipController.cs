@@ -27,6 +27,13 @@ namespace IdentityService.Controllers
             return Ok(friends);
         }
 
+        [HttpGet("friend-ids")]
+        public async Task<IActionResult> GetFriendIds()
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return Ok(await _friendshipService.GetFriendIdsAsync(userId));
+        }
+
         [HttpGet("requests")]
         public async Task<IActionResult> GetPendingRequests()
         {

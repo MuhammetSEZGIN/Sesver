@@ -69,5 +69,16 @@ namespace MessageService.Controllers
             }
             return Ok();
         }
+
+        [HttpGet("conversations/{conversationId}/call-context")]
+        [Authorize(AuthenticationSchemes = "Bearer")]
+        [ProducesResponseType(typeof(DmCallContextDto), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status403Forbidden)]
+        public async Task<IActionResult> GetCallContext(string conversationId)
+        {
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var callContext = await _dmConversationService.GetCallContextAsync(conversationId, userId);
+            return callContext == null ? Forbid() : Ok(callContext);
+        }
     }
 }

@@ -7,6 +7,7 @@ namespace IdentityService.Interfaces;
 public interface IFriendshipService
 {
     Task<List<FriendshipReadDto>> GetFriendsAsync(string userId);
+    Task<List<string>> GetFriendIdsAsync(string userId);
     Task<List<FriendshipReadDto>> GetPendingRequestsAsync(string userId);
     Task<(bool Succeeded, string Message, FriendshipReadDto Data)> SendRequestAsync(
         string requesterId,

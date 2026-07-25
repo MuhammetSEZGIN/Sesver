@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using PresenceService.Interfaces;
+using PresenceService.Models;
 
 namespace PresenceService.Hubs;
 
@@ -11,10 +12,21 @@ public class PresenceHub : Hub
 
     private readonly IPresenceRepository _repository;
     private readonly ILogger<PresenceHub> _logger;
+    private readonly ICallRepository _calls;
+    private readonly IIdentityAuthorizationClient _identityClient;
+    private readonly IMessageAuthorizationClient _messageClient;
 
-    public PresenceHub(IPresenceRepository repository, ILogger<PresenceHub> logger)
+    public PresenceHub(
+        IPresenceRepository repository,
+        ICallRepository calls,
+        IIdentityAuthorizationClient identityClient,
+        IMessageAuthorizationClient messageClient,
+        ILogger<PresenceHub> logger)
     {
         _repository = repository;
+        _calls = calls;
+        _identityClient = identityClient;
+        _messageClient = messageClient;
         _logger = logger;
     }
 
@@ -40,8 +52,10 @@ public class PresenceHub : Hub
         var userId = Context.UserIdentifier;
         if (!string.IsNullOrEmpty(userId))
         {
-            await _repository.SetUserOnline(userId, Context.ConnectionId);
+            var becameOnline = await _repository.AddUserConnection(userId, Context.ConnectionId);
             _logger.LogInformation("User {UserId} connected", userId);
+            if (becameOnline)
+                await Clients.Group($"user_{userId}").SendAsync("UserOnline", userId);
         }
         await base.OnConnectedAsync();
     }
@@ -51,7 +65,8 @@ public class PresenceHub : Hub
         var userId = Context.UserIdentifier;
         if (!string.IsNullOrEmpty(userId))
         {
-            await _repository.SetUserOffline(userId);
+            var clanIds = await _repository.GetConnectionClans(Context.ConnectionId);
+            var becameOffline = await _repository.RemoveUserConnection(userId, Context.ConnectionId);
 
             // Clean up voice channel if the user was in one
             var voiceInfo = await _repository.LeaveVoiceChannel(Context.ConnectionId);
@@ -68,17 +83,34 @@ public class PresenceHub : Hub
                     voiceChannelId = channelId,
                     userId = uid
                 });
+
+                if (string.IsNullOrEmpty(clanId) && channelId.StartsWith(DmVoiceRoomPrefix, StringComparison.Ordinal))
+                {
+                    var ended = _calls.EndAcceptedForUser(uid, channelId[DmVoiceRoomPrefix.Length..]);
+                    if (ended.Succeeded)
+                        await SendCallToBothAsync(ended.Call!, "CallEnded", "disconnected-from-voice");
+                }
             }
 
-            // Notify subscribed clans that this user is offline
-            var clanIds = await _repository.GetConnectionClans(Context.ConnectionId);
-            foreach (var clanId in clanIds)
+            if (becameOffline)
             {
-                await Clients.Group($"clan_{clanId}").SendAsync("UserOffline", userId);
+                await Clients.Group($"user_{userId}").SendAsync("UserOffline", userId);
+                foreach (var clanId in clanIds)
+                    await Clients.Group($"clan_{clanId}").SendAsync("UserOffline", userId);
+
+                var disconnectedCall = _calls.HandleUserOffline(userId);
+                if (disconnectedCall != null)
+                {
+                    var eventName = disconnectedCall.Status == CallStatus.Cancelled
+                        ? "CallCancelled"
+                        : "CallEnded";
+                    await SendCallToBothAsync(disconnectedCall, eventName, "disconnected");
+                }
             }
 
             await _repository.RemoveConnectionClans(Context.ConnectionId);
             await _repository.RemoveConnectionConversations(Context.ConnectionId);
+            await _repository.RemoveConnectionWatchedUsers(Context.ConnectionId);
         }
         await base.OnDisconnectedAsync(exception);
     }
@@ -119,19 +151,112 @@ public class PresenceHub : Hub
         await _repository.SetConnectionConversations(Context.ConnectionId, conversationIds);
     }
 
+    /// <summary>Replaces this connection's friend-presence subscriptions and returns a snapshot.</summary>
+    public async Task SubscribeToUsers(List<string> userIds)
+    {
+        var currentUserId = Context.UserIdentifier;
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
+        try
+        {
+            var friends = await _identityClient.GetFriendIdsAsync(currentUserId, Context.ConnectionAborted);
+            var allowed = (userIds ?? []).Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.Ordinal).Where(friends.Contains).ToList();
+            var previous = await _repository.GetConnectionWatchedUsers(Context.ConnectionId);
+
+            foreach (var removed in previous.Except(allowed, StringComparer.Ordinal))
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"user_{removed}");
+            foreach (var added in allowed.Except(previous, StringComparer.Ordinal))
+                await Groups.AddToGroupAsync(Context.ConnectionId, $"user_{added}");
+
+            await _repository.SetConnectionWatchedUsers(Context.ConnectionId, allowed);
+            await SendOnlineSnapshotAsync(allowed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not authorize presence subscription for {UserId}", currentUserId);
+            await Clients.Caller.SendAsync("SubscriptionFailed", "authorization-unavailable");
+        }
+    }
+
     /// <summary>
     /// Returns which of the given userIds are currently online.
     /// </summary>
     public async Task GetOnlineUsers(List<string> userIds)
     {
-        var onlineUsers = new List<string>();
-        foreach (var uid in userIds)
+        try
         {
-            if (await _repository.IsUserOnline(uid))
-                onlineUsers.Add(uid);
+            var currentUserId = Context.UserIdentifier;
+            if (string.IsNullOrWhiteSpace(currentUserId)) return;
+            var friends = await _identityClient.GetFriendIdsAsync(currentUserId, Context.ConnectionAborted);
+            var allowed = (userIds ?? []).Distinct(StringComparer.Ordinal).Where(friends.Contains).ToList();
+            await SendOnlineSnapshotAsync(allowed);
         }
-        await Clients.Caller.SendAsync("OnlineUsers", onlineUsers);
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not authorize online-user query for {UserId}", Context.UserIdentifier);
+            await Clients.Caller.SendAsync("SubscriptionFailed", "authorization-unavailable");
+        }
     }
+
+    // ── DM voice calls ─────────────────────────────────────────────────────────
+
+    public async Task CallUser(string conversationId)
+    {
+        var callerUserId = Context.UserIdentifier;
+        if (string.IsNullOrWhiteSpace(callerUserId) || string.IsNullOrWhiteSpace(conversationId)) return;
+
+        try
+        {
+            var token = GetAccessToken();
+            var callContext = await _messageClient.GetCallContextAsync(
+                conversationId, token, Context.ConnectionAborted);
+            if (callContext == null)
+            {
+                await SendCallFailedAsync(conversationId, "not-a-participant");
+                return;
+            }
+
+            var friends = await _identityClient.GetFriendIdsAsync(callerUserId, Context.ConnectionAborted);
+            if (!friends.Contains(callContext.OtherUserId))
+            {
+                await SendCallFailedAsync(conversationId, "not-friends");
+                return;
+            }
+
+            var result = _calls.TryCreate(conversationId, callerUserId, callContext.OtherUserId);
+            if (!result.Succeeded)
+            {
+                await Clients.User(callerUserId).SendAsync("CallBusy", new
+                {
+                    conversationId,
+                    targetUserId = callContext.OtherUserId,
+                });
+                return;
+            }
+
+            var call = result.Call!;
+            await Clients.User(call.CalleeUserId).SendAsync("IncomingCall", CallPayload(call));
+            await Clients.User(call.CallerUserId).SendAsync("CallRinging", CallPayload(call));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not start call for conversation {ConversationId}", conversationId);
+            await SendCallFailedAsync(conversationId, "authorization-unavailable");
+        }
+    }
+
+    public Task AcceptCall(Guid callId) => ApplyCallActionAsync(
+        _calls.Accept(callId, Context.UserIdentifier ?? string.Empty), "CallAccepted");
+
+    public Task RejectCall(Guid callId) => ApplyCallActionAsync(
+        _calls.Reject(callId, Context.UserIdentifier ?? string.Empty), "CallRejected");
+
+    public Task CancelCall(Guid callId) => ApplyCallActionAsync(
+        _calls.Cancel(callId, Context.UserIdentifier ?? string.Empty), "CallCancelled");
+
+    public Task EndCall(Guid callId) => ApplyCallActionAsync(
+        _calls.End(callId, Context.UserIdentifier ?? string.Empty), "CallEnded");
 
     // ── Voice channel presence ─────────────────────────────────────────────────
 
@@ -181,6 +306,13 @@ public class PresenceHub : Hub
             voiceChannelId = channelId,
             userId
         });
+
+        if (string.IsNullOrEmpty(clanId) && channelId.StartsWith(DmVoiceRoomPrefix, StringComparison.Ordinal))
+        {
+            var ended = _calls.EndAcceptedForUser(userId, channelId[DmVoiceRoomPrefix.Length..]);
+            if (ended.Succeeded)
+                await SendCallToBothAsync(ended.Call!, "CallEnded", "left-voice");
+        }
     }
 
     /// <summary>
@@ -205,5 +337,50 @@ public class PresenceHub : Hub
             participants
         });
     }
-}
 
+    private string GetAccessToken()
+    {
+        var token = Context.GetHttpContext()?.Request.Query["access_token"].ToString();
+        if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("Hub access token is unavailable.");
+        return token;
+    }
+
+    private async Task SendOnlineSnapshotAsync(IEnumerable<string> userIds)
+    {
+        var online = new List<string>();
+        foreach (var userId in userIds)
+            if (await _repository.IsUserOnline(userId)) online.Add(userId);
+        await Clients.Caller.SendAsync("OnlineUsers", online);
+    }
+
+    private async Task ApplyCallActionAsync(CallActionResult result, string eventName)
+    {
+        if (!result.Succeeded)
+        {
+            await Clients.Caller.SendAsync("CallFailed", new { callId = result.Call?.CallId, code = result.Code });
+            return;
+        }
+        await SendCallToBothAsync(result.Call!, eventName);
+    }
+
+    private Task SendCallToBothAsync(CallSession call, string eventName, string? reason = null) =>
+        Task.WhenAll(
+            Clients.User(call.CallerUserId).SendAsync(eventName, CallPayload(call, reason)),
+            Clients.User(call.CalleeUserId).SendAsync(eventName, CallPayload(call, reason)));
+
+    private static object CallPayload(CallSession call, string? reason = null) => new
+    {
+        callId = call.CallId,
+        conversationId = call.ConversationId,
+        callerUserId = call.CallerUserId,
+        calleeUserId = call.CalleeUserId,
+        roomId = call.RoomId,
+        status = call.Status.ToString(),
+        createdAt = call.CreatedAt,
+        expiresAt = call.CreatedAt.AddSeconds(30),
+        reason,
+    };
+
+    private Task SendCallFailedAsync(string conversationId, string code) =>
+        Clients.Caller.SendAsync("CallFailed", new { conversationId, code });
+}

@@ -127,6 +127,29 @@ public class DmConversationService : IDmConversationService
         return conversation != null && conversation.HasParticipant(userId);
     }
 
+    public async Task<DmCallContextDto?> GetCallContextAsync(string conversationId, string userId)
+    {
+        if (!ObjectId.TryParse(conversationId, out var objectId))
+        {
+            return null;
+        }
+
+        var conversation = await _context.DmConversations
+            .Find(d => d.Id == objectId && (d.UserAId == userId || d.UserBId == userId))
+            .FirstOrDefaultAsync();
+
+        if (conversation == null)
+        {
+            return null;
+        }
+
+        return new DmCallContextDto
+        {
+            ConversationId = conversation.Id.ToString(),
+            OtherUserId = conversation.UserAId == userId ? conversation.UserBId : conversation.UserAId,
+        };
+    }
+
     private async Task<DmConversationDto> ToDtoAsync(DmConversation conversation, string requestingUserId)
     {
         var otherUserId =

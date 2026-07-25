@@ -35,6 +35,24 @@ services:
       timeout: 5s
       retries: 5
 
+  notification-db:
+    image: postgres:18-alpine
+    container_name: sesver-local-notification-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: NotificationDb
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5434:5432"
+    volumes:
+      - sesver_local_notification_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d NotificationDb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # AuthenticationService (Java) — kendi ayrı Postgres'i, prod'daki auth-postgres ile aynı DB adı.
   auth-db:
     image: postgres:15-alpine
@@ -109,8 +127,37 @@ services:
       timeout: 5s
       retries: 5
 
+  livekit-redis:
+    image: redis:7-alpine
+    container_name: sesver-local-livekit-redis
+    restart: unless-stopped
+    volumes:
+      - sesver_local_livekit_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  livekit-server:
+    image: livekit/livekit-server:latest
+    container_name: sesver-local-livekit-server
+    restart: unless-stopped
+    command: ["--config", "/etc/livekit.local.yaml", "--node-ip", "127.0.0.1"]
+    volumes:
+      - ./livekit.local.yaml:/etc/livekit.local.yaml:ro
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+    depends_on:
+      livekit-redis:
+        condition: service_healthy
+
 volumes:
   sesver_local_identity_db:
+  sesver_local_notification_db:
   sesver_local_clan_db:
   sesver_local_auth_db:
   sesver_local_message_db:
+  sesver_local_livekit_redis:

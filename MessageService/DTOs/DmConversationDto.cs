@@ -18,3 +18,9 @@ public class DmConversationDto
     public DateTime? LastMessageAt { get; set; }
     public DateTime CreatedAt { get; set; }
 }
+
+public class DmCallContextDto
+{
+    public string ConversationId { get; set; }
+    public string OtherUserId { get; set; }
+}

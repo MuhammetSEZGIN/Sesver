@@ -35,4 +35,10 @@ public class IdentityProducer :IIdentityProducer
         );
         await _publishEndpoint.Publish(message);
     }
+
+    public Task PublishNotificationAsync(NotificationRequestedMessage message) =>
+        _publishEndpoint.Publish(message);
+
+    public Task PublishFriendshipRelationshipChangedAsync(FriendshipRelationshipChangedMessage message) =>
+        _publishEndpoint.Publish(message);
 }

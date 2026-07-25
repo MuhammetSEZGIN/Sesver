@@ -5,9 +5,10 @@ namespace PresenceService.Interfaces;
 public interface IPresenceRepository
 {
     // Online presence
-    Task SetUserOnline(string userId, string connectionId);
-    Task<string?> SetUserOffline(string userId);
+    Task<bool> AddUserConnection(string userId, string connectionId);
+    Task<bool> RemoveUserConnection(string userId, string connectionId);
     Task<bool> IsUserOnline(string userId);
+    Task<List<string>> GetUserConnections(string userId);
 
     // Clan group subscriptions (so we can notify on disconnect)
     Task SetConnectionClans(string connectionId, List<string> clanIds);
@@ -18,6 +19,13 @@ public interface IPresenceRepository
     Task SetConnectionConversations(string connectionId, List<string> conversationIds);
     Task<List<string>> GetConnectionConversations(string connectionId);
     Task RemoveConnectionConversations(string connectionId);
+
+    // Friend presence subscriptions
+    Task SetConnectionWatchedUsers(string connectionId, List<string> userIds);
+    Task<List<string>> GetConnectionWatchedUsers(string connectionId);
+    Task RemoveConnectionWatchedUsers(string connectionId);
+    Task<List<string>> GetWatchersOfUser(string userId);
+    Task RemoveWatchedUser(string connectionId, string userId);
 
     // Voice channel presence. clanId is null for DM voice rooms (voiceChannelId = "dm-{conversationId}", already globally unique).
     Task JoinVoiceChannel(string connectionId, string userId, string userName, string? clanId, string voiceChannelId);

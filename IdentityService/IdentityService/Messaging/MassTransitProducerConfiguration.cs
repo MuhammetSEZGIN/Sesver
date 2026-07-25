@@ -1,6 +1,6 @@
 using System.Security.Authentication;
-using IdentityService.Messaging.RabbitMQ;
 using MassTransit;
+using Shared.Contracts;
 
 namespace IdentityService.Messaging;
 
@@ -15,7 +15,7 @@ namespace IdentityService.Messaging;
             {
                 x.UsingRabbitMq((context, cfg) =>
                 {
-                   cfg.Host(rabbitMqOptions.Host, (ushort)rabbitMqOptions.Port, rabbitMqOptions.VirtualHost, h => 
+                   cfg.Host(rabbitMqOptions.HostName, (ushort)rabbitMqOptions.Port, rabbitMqOptions.VirtualHost, h =>
                     {
                         h.Username(rabbitMqOptions.UserName);
                         h.Password(rabbitMqOptions.Password);

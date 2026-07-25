@@ -6,14 +6,20 @@ namespace PresenceService.Repositories;
 
 public class PresenceRepository : IPresenceRepository
 {
-    // Online presence: userId → connectionId
-    private readonly ConcurrentDictionary<string, string> _userConnections = new();
+    private readonly object _connectionGate = new();
+    // Online presence: userId → connectionIds
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _userConnections = new();
+    private readonly ConcurrentDictionary<string, string> _connectionUsers = new();
 
     // Clan subscriptions per connection: connectionId → clanIds
     private readonly ConcurrentDictionary<string, List<string>> _connectionClans = new();
 
     // DM conversation subscriptions per connection: connectionId → conversationIds
     private readonly ConcurrentDictionary<string, List<string>> _connectionConversations = new();
+
+    // Friend presence watchers
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _userWatchers = new();
+    private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _connectionWatchedUsers = new();
 
     // Voice channel data: clanId → voiceChannelId → participants.
     // DM voice rooms (clanId == null) are bucketed under this sentinel key;
@@ -26,20 +32,40 @@ public class PresenceRepository : IPresenceRepository
 
     // ── Online presence ────────────────────────────────────────────────────────
 
-    public Task SetUserOnline(string userId, string connectionId)
+    public Task<bool> AddUserConnection(string userId, string connectionId)
     {
-        _userConnections[userId] = connectionId;
-        return Task.CompletedTask;
+        lock (_connectionGate)
+        {
+            var connections = _userConnections.GetOrAdd(userId, _ => new());
+            var becameOnline = connections.IsEmpty;
+            connections[connectionId] = 0;
+            _connectionUsers[connectionId] = userId;
+            return Task.FromResult(becameOnline);
+        }
     }
 
-    public Task<string?> SetUserOffline(string userId)
+    public Task<bool> RemoveUserConnection(string userId, string connectionId)
     {
-        _userConnections.TryRemove(userId, out var connectionId);
-        return Task.FromResult<string?>(connectionId);
+        lock (_connectionGate)
+        {
+            _connectionUsers.TryRemove(connectionId, out _);
+            if (!_userConnections.TryGetValue(userId, out var connections))
+                return Task.FromResult(false);
+
+            connections.TryRemove(connectionId, out _);
+            if (!connections.IsEmpty) return Task.FromResult(false);
+            var becameOffline = _userConnections.TryRemove(userId, out _);
+            return Task.FromResult(becameOffline);
+        }
     }
 
     public Task<bool> IsUserOnline(string userId) =>
-        Task.FromResult(_userConnections.ContainsKey(userId));
+        Task.FromResult(_userConnections.TryGetValue(userId, out var connections) && !connections.IsEmpty);
+
+    public Task<List<string>> GetUserConnections(string userId) =>
+        Task.FromResult(_userConnections.TryGetValue(userId, out var connections)
+            ? connections.Keys.ToList()
+            : new List<string>());
 
     // ── Clan subscriptions ─────────────────────────────────────────────────────
 
@@ -78,6 +104,51 @@ public class PresenceRepository : IPresenceRepository
     public Task RemoveConnectionConversations(string connectionId)
     {
         _connectionConversations.TryRemove(connectionId, out _);
+        return Task.CompletedTask;
+    }
+
+    // ── Friend presence subscriptions ─────────────────────────────────────────
+
+    public Task SetConnectionWatchedUsers(string connectionId, List<string> userIds)
+    {
+        RemoveConnectionWatchedUsersCore(connectionId);
+        var watched = _connectionWatchedUsers.GetOrAdd(connectionId, _ => new());
+        foreach (var userId in userIds.Distinct(StringComparer.Ordinal))
+        {
+            watched[userId] = 0;
+            _userWatchers.GetOrAdd(userId, _ => new())[connectionId] = 0;
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task<List<string>> GetConnectionWatchedUsers(string connectionId) =>
+        Task.FromResult(_connectionWatchedUsers.TryGetValue(connectionId, out var watched)
+            ? watched.Keys.ToList()
+            : new List<string>());
+
+    public Task RemoveConnectionWatchedUsers(string connectionId)
+    {
+        RemoveConnectionWatchedUsersCore(connectionId);
+        return Task.CompletedTask;
+    }
+
+    public Task<List<string>> GetWatchersOfUser(string userId) =>
+        Task.FromResult(_userWatchers.TryGetValue(userId, out var watchers)
+            ? watchers.Keys.ToList()
+            : new List<string>());
+
+    public Task RemoveWatchedUser(string connectionId, string userId)
+    {
+        if (_connectionWatchedUsers.TryGetValue(connectionId, out var watched))
+        {
+            watched.TryRemove(userId, out _);
+            if (watched.IsEmpty) _connectionWatchedUsers.TryRemove(connectionId, out _);
+        }
+        if (_userWatchers.TryGetValue(userId, out var watchers))
+        {
+            watchers.TryRemove(connectionId, out _);
+            if (watchers.IsEmpty) _userWatchers.TryRemove(userId, out _);
+        }
         return Task.CompletedTask;
     }
 
@@ -197,7 +268,19 @@ public async Task DeleteVoiceChannel(string clanId, string channelId)
             channels.TryRemove(voiceChannelId, out _);
 
         if (channels.IsEmpty)
-            _voicePresence.TryRemove(clanId, out _);
+            _voicePresence.TryRemove(bucket, out _);
+    }
+
+    private void RemoveConnectionWatchedUsersCore(string connectionId)
+    {
+        if (!_connectionWatchedUsers.TryRemove(connectionId, out var watched)) return;
+        foreach (var userId in watched.Keys)
+        {
+            if (_userWatchers.TryGetValue(userId, out var watchers))
+            {
+                watchers.TryRemove(connectionId, out _);
+                if (watchers.IsEmpty) _userWatchers.TryRemove(userId, out _);
+            }
+        }
     }
 }
-

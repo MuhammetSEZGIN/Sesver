@@ -1,5 +1,6 @@
 using System.Security.Authentication;
 using MassTransit;
+using Shared.Contracts;
 
 namespace MessageService.RabbitMq;
 
@@ -7,7 +8,7 @@ public static class MassTransitManager
 {
     public static IServiceCollection AddRabbitMQServices(this IServiceCollection services, IConfiguration configuration)
     {
-        var rabbitMqOptions = new RabbitMQOptions();
+        var rabbitMqOptions = new RabbitMqOptions();
         configuration.GetSection("RabbitMQ").Bind(rabbitMqOptions);
         services.AddMassTransit(x =>
          {
