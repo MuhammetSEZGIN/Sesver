@@ -12,6 +12,8 @@ public interface IPresenceRepository
 
     // Clan group subscriptions (so we can notify on disconnect)
     Task SetConnectionClans(string connectionId, List<string> clanIds);
+    Task AddConnectionClan(string connectionId, string clanId);
+    Task RemoveConnectionClan(string connectionId, string clanId);
     Task<List<string>> GetConnectionClans(string connectionId);
     Task RemoveConnectionClans(string connectionId);
 

@@ -24,6 +24,13 @@ public enum ClanRoleEventType
     REMOVE_ALL_ROLES
 }
 
+public enum ClanMembershipChangeType
+{
+    Joined,
+    RoleChanged,
+    Removed
+}
+
 public enum NotificationType
 {
     FriendRequestReceived,
@@ -52,6 +59,27 @@ public record class ChannelDeletedMessage
     public string? ChannelId { get; set; }
     public string? ClanId { get; set; }
     public ChannelType ChannelType { get; set; }
+}
+
+public record class ChannelUpsertedMessage
+{
+    public string? ChannelId { get; init; }
+    public string? ClanId { get; init; }
+    public string? Name { get; init; }
+    public ChannelType ChannelType { get; init; }
+    public bool IsActive { get; init; } = true;
+    public int MaxParticipants { get; init; }
+}
+
+public record class ClanMembershipChangedMessage
+{
+    public Guid MembershipId { get; init; }
+    public string? ClanId { get; init; }
+    public string? UserId { get; init; }
+    public string? UserName { get; init; }
+    public string? AvatarUrl { get; init; }
+    public string? Role { get; init; }
+    public ClanMembershipChangeType ChangeType { get; init; }
 }
 
 public record UserUpdatedMessage

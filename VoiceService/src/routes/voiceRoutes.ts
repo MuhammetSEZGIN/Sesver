@@ -13,7 +13,17 @@ export function createVoiceRouter(liveKitService: ILiveKitService): Router {
   const webhookController = new WebhookController();
 
   // Token alma endpoint'i
+  router.get(
+    "/join-room/:roomId/clanId/:clanId",
+    jwtAuth,
+    voiceController.joinRoom
+  );
   router.get("/join-room/:roomId", jwtAuth, voiceController.joinRoom);
+  router.delete(
+    "/rooms/:roomId/participants/:userId/clanId/:clanId",
+    jwtAuth,
+    voiceController.kickParticipant
+  );
 
   // LiveKit webhook endpoint'i
   router.post("/webhook", webhookController.handleWebhook);

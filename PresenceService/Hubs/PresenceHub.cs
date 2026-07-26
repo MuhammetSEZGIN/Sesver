@@ -208,9 +208,8 @@ public class PresenceHub : Hub
 
         try
         {
-            var token = GetAccessToken();
             var callContext = await _messageClient.GetCallContextAsync(
-                conversationId, token, Context.ConnectionAborted);
+                conversationId, callerUserId, Context.ConnectionAborted);
             if (callContext == null)
             {
                 await SendCallFailedAsync(conversationId, "not-a-participant");
@@ -224,10 +223,14 @@ public class PresenceHub : Hub
                 return;
             }
 
-            var result = _calls.TryCreate(conversationId, callerUserId, callContext.OtherUserId);
+            var result = _calls.TryCreate(
+                conversationId,
+                callerUserId,
+                callContext.OtherUserId,
+                Context.ConnectionId);
             if (!result.Succeeded)
             {
-                await Clients.User(callerUserId).SendAsync("CallBusy", new
+                await Clients.Caller.SendAsync("CallBusy", new
                 {
                     conversationId,
                     targetUserId = callContext.OtherUserId,
@@ -237,7 +240,7 @@ public class PresenceHub : Hub
 
             var call = result.Call!;
             await Clients.User(call.CalleeUserId).SendAsync("IncomingCall", CallPayload(call));
-            await Clients.User(call.CallerUserId).SendAsync("CallRinging", CallPayload(call));
+            await Clients.Caller.SendAsync("CallRinging", CallPayload(call));
         }
         catch (Exception ex)
         {
@@ -246,8 +249,28 @@ public class PresenceHub : Hub
         }
     }
 
-    public Task AcceptCall(Guid callId) => ApplyCallActionAsync(
-        _calls.Accept(callId, Context.UserIdentifier ?? string.Empty), "CallAccepted");
+    public async Task AcceptCall(Guid callId)
+    {
+        var result = _calls.Accept(
+            callId,
+            Context.UserIdentifier ?? string.Empty,
+            Context.ConnectionId);
+        await ApplyCallActionAsync(result, "CallAccepted");
+
+        if (!result.Succeeded || result.Call == null) return;
+
+        // Aynı kullanıcı başka sekme/cihazlarda da çevrimiçi olabilir. Aramayı
+        // yalnızca kabul eden bağlantı LiveKit'e taşır; diğer cihazlarda zil kapanır.
+        var otherConnections = (await _repository.GetUserConnections(result.Call.CalleeUserId))
+            .Where(connectionId => connectionId != Context.ConnectionId)
+            .ToList();
+        if (otherConnections.Count > 0)
+        {
+            await Clients.Clients(otherConnections).SendAsync(
+                "CallAnsweredElsewhere",
+                CallPayload(result.Call, "answered-elsewhere"));
+        }
+    }
 
     public Task RejectCall(Guid callId) => ApplyCallActionAsync(
         _calls.Reject(callId, Context.UserIdentifier ?? string.Empty), "CallRejected");
@@ -338,13 +361,6 @@ public class PresenceHub : Hub
         });
     }
 
-    private string GetAccessToken()
-    {
-        var token = Context.GetHttpContext()?.Request.Query["access_token"].ToString();
-        if (string.IsNullOrWhiteSpace(token)) throw new InvalidOperationException("Hub access token is unavailable.");
-        return token;
-    }
-
     private async Task SendOnlineSnapshotAsync(IEnumerable<string> userIds)
     {
         var online = new List<string>();
@@ -363,10 +379,15 @@ public class PresenceHub : Hub
         await SendCallToBothAsync(result.Call!, eventName);
     }
 
-    private Task SendCallToBothAsync(CallSession call, string eventName, string? reason = null) =>
-        Task.WhenAll(
-            Clients.User(call.CallerUserId).SendAsync(eventName, CallPayload(call, reason)),
-            Clients.User(call.CalleeUserId).SendAsync(eventName, CallPayload(call, reason)));
+    private Task SendCallToBothAsync(CallSession call, string eventName, string? reason = null)
+    {
+        var payload = CallPayload(call, reason);
+        var caller = Clients.Client(call.CallerConnectionId).SendAsync(eventName, payload);
+        var callee = string.IsNullOrWhiteSpace(call.CalleeConnectionId)
+            ? Clients.User(call.CalleeUserId).SendAsync(eventName, payload)
+            : Clients.Client(call.CalleeConnectionId).SendAsync(eventName, payload);
+        return Task.WhenAll(caller, callee);
+    }
 
     private static object CallPayload(CallSession call, string? reason = null) => new
     {

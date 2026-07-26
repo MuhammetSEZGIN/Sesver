@@ -9,15 +9,26 @@ public class CallRepository : ICallRepository
     private readonly Dictionary<Guid, CallSession> _calls = new();
     private readonly Dictionary<string, Guid> _activeCallByUser = new(StringComparer.Ordinal);
 
-    public CallActionResult TryCreate(string conversationId, string callerUserId, string calleeUserId)
+    public CallActionResult TryCreate(
+        string conversationId,
+        string callerUserId,
+        string calleeUserId,
+        string callerConnectionId)
     {
         lock (_gate)
         {
             if (_activeCallByUser.ContainsKey(callerUserId) || _activeCallByUser.ContainsKey(calleeUserId))
                 return new(false, "busy", null);
 
-            var call = new CallSession(Guid.NewGuid(), conversationId, callerUserId, calleeUserId,
-                DateTime.UtcNow, CallStatus.Ringing);
+            var call = new CallSession(
+                Guid.NewGuid(),
+                conversationId,
+                callerUserId,
+                calleeUserId,
+                callerConnectionId,
+                null,
+                DateTime.UtcNow,
+                CallStatus.Ringing);
             _calls[call.CallId] = call;
             _activeCallByUser[callerUserId] = call.CallId;
             _activeCallByUser[calleeUserId] = call.CallId;
@@ -25,9 +36,10 @@ public class CallRepository : ICallRepository
         }
     }
 
-    public CallActionResult Accept(Guid callId, string actorUserId) =>
+    public CallActionResult Accept(Guid callId, string actorUserId, string calleeConnectionId) =>
         Transition(callId, actorUserId, CallStatus.Ringing, CallStatus.Accepted,
-            call => call.CalleeUserId == actorUserId, release: false);
+            call => call.CalleeUserId == actorUserId, release: false,
+            call => call with { CalleeConnectionId = calleeConnectionId });
 
     public CallActionResult Reject(Guid callId, string actorUserId) =>
         Transition(callId, actorUserId, CallStatus.Ringing, CallStatus.Rejected,
@@ -94,14 +106,15 @@ public class CallRepository : ICallRepository
         CallStatus expected,
         CallStatus target,
         Func<CallSession, bool> authorized,
-        bool release)
+        bool release,
+        Func<CallSession, CallSession>? update = null)
     {
         lock (_gate)
         {
             if (!_calls.TryGetValue(callId, out var call)) return new(false, "not-found", null);
             if (!authorized(call)) return new(false, "forbidden", null);
             if (call.Status != expected) return new(false, "invalid-state", call);
-            var transitioned = call with { Status = target };
+            var transitioned = (update?.Invoke(call) ?? call) with { Status = target };
             _calls[callId] = transitioned;
             if (release) Release(transitioned);
             return new(true, target.ToString().ToLowerInvariant(), transitioned);

@@ -1,7 +1,7 @@
 import config from "../config";
 
 export interface IDmAuthorizationService {
-  isParticipant(conversationId: string, rawToken: string): Promise<boolean>;
+  isParticipant(conversationId: string, userId: string): Promise<boolean>;
 }
 
 const DM_ROOM_PREFIX = "dm-";
@@ -15,12 +15,12 @@ export function extractConversationId(roomId: string): string {
 }
 
 export class DmAuthorizationService implements IDmAuthorizationService {
-  async isParticipant(conversationId: string, rawToken: string): Promise<boolean> {
+  async isParticipant(conversationId: string, userId: string): Promise<boolean> {
     const url = `${config.messageServiceUrl}/api/Dm/conversations/${encodeURIComponent(conversationId)}/is-participant`;
 
     const response = await fetch(url, {
       method: "GET",
-      headers: { Authorization: `Bearer ${rawToken}` },
+      headers: { "X-User-Id": userId },
     });
 
     return response.ok;

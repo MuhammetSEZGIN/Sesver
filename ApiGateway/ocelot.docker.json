@@ -1,6 +1,20 @@
 {
   "Routes": [
     {
+      "DownstreamPathTemplate": "/messagehub",
+      "DownstreamScheme": "ws",
+      "DownstreamHostAndPorts": [ { "Host": "messageservice", "Port": 80 } ],
+      "UpstreamPathTemplate": "/messagehub",
+      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ]
+    },
+    {
+      "DownstreamPathTemplate": "/messagehub/{everything}",
+      "DownstreamScheme": "ws",
+      "DownstreamHostAndPorts": [ { "Host": "messageservice", "Port": 80 } ],
+      "UpstreamPathTemplate": "/messagehub/{everything}",
+      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ]
+    },
+    {
       "DownstreamPathTemplate": "/api/Notification",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [ { "Host": "notificationservice", "Port": 80 } ],

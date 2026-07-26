@@ -70,6 +70,30 @@ public class NotificationManager(
         return true;
     }
 
+    public async Task<int> DeleteAllAsync(string userId, CancellationToken cancellationToken)
+    {
+        int deletedCount;
+        var query = dbContext.Notifications.Where(x => x.UserId == userId);
+        if (dbContext.Database.IsRelational())
+        {
+            deletedCount = await query.ExecuteDeleteAsync(cancellationToken);
+        }
+        else
+        {
+            var entities = await query.ToListAsync(cancellationToken);
+            deletedCount = entities.Count;
+            dbContext.Notifications.RemoveRange(entities);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        await hubContext.Clients.User(userId)
+            .SendAsync("NotificationsCleared", cancellationToken);
+        await hubContext.Clients.User(userId)
+            .SendAsync("UnreadCountChanged", 0, cancellationToken);
+
+        return deletedCount;
+    }
+
     public async Task<bool> CreateAsync(NotificationRequestedMessage message, CancellationToken cancellationToken)
     {
         if (message.EventId == Guid.Empty || string.IsNullOrWhiteSpace(message.UserId))

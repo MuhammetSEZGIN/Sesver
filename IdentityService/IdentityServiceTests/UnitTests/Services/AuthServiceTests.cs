@@ -95,6 +95,7 @@ namespace IdentityServiceTests.UnitTests.Services
             Assert.True(result.IsSuccessfull);
             Assert.Equal("u1", result.Data.UserID);
             Assert.False(string.IsNullOrWhiteSpace(result.Data.AccessToken));
+            Assert.Equal("new-refresh", result.Data.RefreshToken);
             refreshService.Verify(x => x.CreateUserRefreshTokenAsync("u1", "DeviceA", "127.0.0.1"), Times.Once);
         }
 

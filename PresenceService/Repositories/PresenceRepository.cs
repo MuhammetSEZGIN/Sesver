@@ -71,14 +71,43 @@ public class PresenceRepository : IPresenceRepository
 
     public Task SetConnectionClans(string connectionId, List<string> clanIds)
     {
-        _connectionClans[connectionId] = clanIds;
+        _connectionClans[connectionId] = clanIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return Task.CompletedTask;
+    }
+
+    public Task AddConnectionClan(string connectionId, string clanId)
+    {
+        var clans = _connectionClans.GetOrAdd(connectionId, _ => new List<string>());
+        lock (clans)
+        {
+            if (!clans.Contains(clanId, StringComparer.Ordinal)) clans.Add(clanId);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveConnectionClan(string connectionId, string clanId)
+    {
+        if (_connectionClans.TryGetValue(connectionId, out var clans))
+        {
+            lock (clans)
+            {
+                clans.RemoveAll(id => string.Equals(id, clanId, StringComparison.Ordinal));
+            }
+        }
         return Task.CompletedTask;
     }
 
     public Task<List<string>> GetConnectionClans(string connectionId)
     {
         _connectionClans.TryGetValue(connectionId, out var clans);
-        return Task.FromResult(clans ?? new List<string>());
+        if (clans == null) return Task.FromResult(new List<string>());
+        lock (clans)
+        {
+            return Task.FromResult(new List<string>(clans));
+        }
     }
 
     public Task RemoveConnectionClans(string connectionId)

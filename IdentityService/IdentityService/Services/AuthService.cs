@@ -97,7 +97,7 @@ public class AuthService : IAuthService
             {
                 UserID = user.Id,
                 AccessToken = token,
-                RefreshToken = refreshTokenResult.Data.ToString(),
+                RefreshToken = refreshTokenResult.Data.RefreshToken,
             };
             return ApiResponse<AuthResponseDto>.Success(authResponse, "Login successful");
         }

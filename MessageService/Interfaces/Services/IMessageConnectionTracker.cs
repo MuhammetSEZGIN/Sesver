@@ -6,4 +6,5 @@ public interface IMessageConnectionTracker
     void LeaveChannel(string userId, string connectionId, string channelId);
     void RemoveConnection(string connectionId);
     bool IsUserInChannel(string userId, string channelId);
+    bool IsConnectionInChannel(string userId, string connectionId, string channelId);
 }

@@ -51,6 +51,28 @@ public class ClanMessageProducer : IClanMessageProducer
         await _publishEndpoint.Publish(message);
     }
 
+    public async Task PublishChannelUpsertedMessageAsync(ChannelUpsertedMessage message)
+    {
+        _logger.LogInformation(
+            "Publishing ChannelUpsertedMessage for channel: {ChannelId}, clan: {ClanId}, type: {ChannelType}",
+            message.ChannelId,
+            message.ClanId,
+            message.ChannelType
+        );
+        await _publishEndpoint.Publish(message);
+    }
+
+    public async Task PublishClanMembershipChangedMessageAsync(ClanMembershipChangedMessage message)
+    {
+        _logger.LogInformation(
+            "Publishing ClanMembershipChangedMessage for user: {UserId}, clan: {ClanId}, change: {ChangeType}",
+            message.UserId,
+            message.ClanId,
+            message.ChangeType
+        );
+        await _publishEndpoint.Publish(message);
+    }
+
     public async Task PublishClanRoleEventAsync(ClanRoleEventDto clanRoleEvent)
     {
         _logger.LogInformation(

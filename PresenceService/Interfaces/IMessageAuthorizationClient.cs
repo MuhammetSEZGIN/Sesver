@@ -4,5 +4,5 @@ namespace PresenceService.Interfaces;
 
 public interface IMessageAuthorizationClient
 {
-    Task<DmCallContext?> GetCallContextAsync(string conversationId, string accessToken, CancellationToken cancellationToken);
+    Task<DmCallContext?> GetCallContextAsync(string conversationId, string userId, CancellationToken cancellationToken);
 }

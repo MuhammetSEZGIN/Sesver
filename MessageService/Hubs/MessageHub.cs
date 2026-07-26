@@ -4,7 +4,6 @@ using MessageService.DTOs;
 using MessageService.Interfaces.Services;
 using MessageService.Models;
 using MessageService.Services;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using MongoDB.Bson;
 using MassTransit;
@@ -12,7 +11,6 @@ using Shared.Contracts;
 
 namespace MessageService.Hubs;
 
-[Authorize(AuthenticationSchemes = "Bearer")]
 public class MessageHub : Hub
 {
     private readonly IMessageService _messageService;
@@ -43,17 +41,79 @@ public class MessageHub : Hub
 
     private string GetUserId() => Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-    private async Task<bool> IsAuthorizedForChannelAsync(string channelId)
+    private string GetConnectionClanId() => Context.User?.FindFirst("clan_id")?.Value;
+
+    private bool TryResolveChannelContext(
+        string channelId,
+        string requestedClanId,
+        out string normalizedClanId,
+        out string groupName
+    )
     {
-        if (!_dmConversationService.IsDmConversationId(channelId))
+        normalizedClanId = null;
+        groupName = string.Empty;
+
+        if (_dmConversationService.IsDmConversationId(channelId))
         {
-            // Clan/channel yetkilendirmesi gateway tarafında (X-Clan-Role) ve
-            // [Authorize(Roles=...)] ile zaten sağlanıyor; burada tekrar kontrol gerekmiyor.
+            if (!string.IsNullOrWhiteSpace(requestedClanId)
+                || !string.IsNullOrWhiteSpace(GetConnectionClanId()))
+            {
+                return false;
+            }
+
+            groupName = channelId;
             return true;
         }
 
-        var userId = GetUserId();
-        return await _dmConversationService.IsParticipantAsync(channelId, userId);
+        if (!Guid.TryParse(channelId, out var parsedChannelId)
+            || !Guid.TryParse(requestedClanId, out var parsedRequestedClanId)
+            || !Guid.TryParse(GetConnectionClanId(), out var parsedConnectionClanId)
+            || parsedRequestedClanId != parsedConnectionClanId
+            || !(Context.User?.IsInRole("OWNER") == true
+                 || Context.User?.IsInRole("ADMIN") == true
+                 || Context.User?.IsInRole("MEMBER") == true))
+        {
+            return false;
+        }
+
+        normalizedClanId = parsedConnectionClanId.ToString("D");
+        groupName = $"clan:{normalizedClanId}:channel:{parsedChannelId:D}";
+        return true;
+    }
+
+    private async Task<bool> CanJoinChannelAsync(string channelId, string clanId)
+    {
+        if (!TryResolveChannelContext(channelId, clanId, out _, out _))
+        {
+            return false;
+        }
+
+        return !_dmConversationService.IsDmConversationId(channelId)
+            || await _dmConversationService.IsParticipantAsync(channelId, GetUserId());
+    }
+
+    private bool TryResolveMutationClan(string requestedClanId, out string normalizedClanId)
+    {
+        normalizedClanId = null;
+        var connectionClanId = GetConnectionClanId();
+
+        if (string.IsNullOrWhiteSpace(requestedClanId))
+        {
+            return string.IsNullOrWhiteSpace(connectionClanId);
+        }
+
+        if (!Guid.TryParse(requestedClanId, out var requested)
+            || !Guid.TryParse(connectionClanId, out var connected)
+            || requested != connected
+            || !(Context.User?.IsInRole("OWNER") == true
+                 || Context.User?.IsInRole("ADMIN") == true
+                 || Context.User?.IsInRole("MEMBER") == true))
+        {
+            return false;
+        }
+
+        normalizedClanId = connected.ToString("D");
+        return true;
     }
 
     public async Task SendMessage(string channelId, string clanId, string message)
@@ -71,7 +131,15 @@ public class MessageHub : Hub
             return;
         }
 
-        if (!await IsAuthorizedForChannelAsync(channelId))
+        if (!TryResolveChannelContext(
+                channelId,
+                clanId,
+                out var normalizedClanId,
+                out var groupName)
+            || !_connectionTracker.IsConnectionInChannel(
+                userId,
+                Context.ConnectionId,
+                groupName))
         {
             _logger.LogWarning("User {UserId} is not authorized for channel {ChannelId}", userId, channelId);
             await Clients.Caller.SendAsync("MessageSendFailed", "You are not authorized to send messages in this channel");
@@ -85,7 +153,7 @@ public class MessageHub : Hub
             var messageDto = new MessageDto
             {
                 Id = objectId.ToString(),
-                ClanId = clanId,
+                ClanId = normalizedClanId,
                 UserName = userName ?? "Unknown",
                 ChannelId = channelId,
                 SenderId = userId,
@@ -93,8 +161,8 @@ public class MessageHub : Hub
                 CreatedAt = DateTime.UtcNow
             };
 
-            string? notificationRecipientId = null;
-            if (string.IsNullOrEmpty(clanId) && _dmConversationService.IsDmConversationId(channelId))
+            string notificationRecipientId = null;
+            if (normalizedClanId is null && _dmConversationService.IsDmConversationId(channelId))
             {
                 var callContext = await _dmConversationService.GetCallContextAsync(channelId, userId);
                 if (callContext != null && !_connectionTracker.IsUserInChannel(callContext.OtherUserId, channelId))
@@ -103,12 +171,12 @@ public class MessageHub : Hub
                 }
             }
 
-            await Clients.Group(channelId.ToString()).SendAsync("ReceiveMessage", messageDto);
+            await Clients.Group(groupName).SendAsync("ReceiveMessage", messageDto);
 
             var newMessage = new Message
             {
                 Id = objectId,
-                ClanId = clanId,
+                ClanId = normalizedClanId,
                 ChannelId = channelId,
                 SenderId = userId,
                 Text = message,
@@ -166,7 +234,7 @@ public class MessageHub : Hub
         }
     }
 
-    public async Task UpdateMessage(string messageId, string newContent)
+    public async Task UpdateMessage(string messageId, string clanId, string newContent)
     {
         var userId = GetUserId();
         if (string.IsNullOrEmpty(newContent))
@@ -186,7 +254,18 @@ public class MessageHub : Hub
                 using var scope = _serviceScopeFactory.CreateScope();
                 var messageService = scope.ServiceProvider.GetRequiredService<IMessageService>();
                 var objectId = ObjectId.Parse(messageId);
-                var result = await messageService.UpdateMessage(objectId, newContent, userId);
+                if (!TryResolveMutationClan(clanId, out var normalizedClanId))
+                {
+                    await Clients.Caller.SendAsync("MessageUpdateFailed", messageId);
+                    return;
+                }
+
+                var result = await messageService.UpdateMessage(
+                    objectId,
+                    newContent,
+                    userId,
+                    normalizedClanId
+                );
                 if (!result.IsSuccess)
                 {
                     _logger.LogWarning("Message {MessageId} could not be updated: {Reason}", messageId, result.Message);
@@ -206,7 +285,17 @@ public class MessageHub : Hub
                     Text = result.Data.Text,
                     CreatedAt = result.Data.CreatedAt
                 };
-                await Clients.Group(result.Data.ChannelId.ToString()).SendAsync("MessageUpdated", messageDto);
+                if (!TryResolveChannelContext(
+                        result.Data.ChannelId,
+                        result.Data.ClanId,
+                        out _,
+                        out var groupName))
+                {
+                    await Clients.Caller.SendAsync("MessageUpdateFailed", messageId);
+                    return;
+                }
+
+                await Clients.Group(groupName).SendAsync("MessageUpdated", messageDto);
             }
             catch (Exception e)
             {
@@ -216,7 +305,7 @@ public class MessageHub : Hub
         }
     }
 
-    public async Task DeleteMessage(string messageId, string channelId)
+    public async Task DeleteMessage(string messageId, string channelId, string clanId)
     {
         var userId = GetUserId();
         var objectId = ObjectId.Parse(messageId);
@@ -236,8 +325,26 @@ public class MessageHub : Hub
 
         try
         {
+            if (!TryResolveChannelContext(
+                    channelId,
+                    clanId,
+                    out var normalizedClanId,
+                    out var groupName)
+                || !_connectionTracker.IsConnectionInChannel(
+                    userId,
+                    Context.ConnectionId,
+                    groupName))
+            {
+                await Clients.Caller.SendAsync("MessageDeleteFailed", messageId);
+                return;
+            }
+
             using var scope = _serviceScopeFactory.CreateScope();
-            var result = await _messageService.DeleteMessageAsync(objectId, userId);
+            var result = await _messageService.DeleteMessageAsync(
+                objectId,
+                userId,
+                normalizedClanId
+            );
 
             if (!result.IsSuccess)
             {
@@ -246,7 +353,7 @@ public class MessageHub : Hub
                 return;
             }
 
-            await Clients.Group(channelId).SendAsync("MessageDeleted", messageId);
+            await Clients.Group(groupName).SendAsync("MessageDeleted", messageId);
         }
         catch (Exception e)
         {
@@ -256,27 +363,38 @@ public class MessageHub : Hub
 
     }
 
-    public async Task JoinChannel(string channelId)
+    public async Task JoinChannel(string channelId, string clanId)
     {
         var userId = GetUserId();
-        if (!await IsAuthorizedForChannelAsync(channelId))
+        if (!await CanJoinChannelAsync(channelId, clanId)
+            || !TryResolveChannelContext(
+                channelId,
+                clanId,
+                out _,
+                out var groupName))
         {
             _logger.LogWarning("User {UserId} is not authorized to join channel {ChannelId}", userId, channelId);
             await Clients.Caller.SendAsync("JoinChannelFailed", channelId);
             return;
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, channelId);
-        _connectionTracker.JoinChannel(userId, Context.ConnectionId, channelId);
+        await Groups.AddToGroupAsync(Context.ConnectionId, groupName);
+        _connectionTracker.JoinChannel(userId, Context.ConnectionId, groupName);
     }
 
     public async Task LeaveChannel(string channelId)
     {
         var userId = GetUserId();
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, channelId);
+        var clanId = GetConnectionClanId();
+        if (!TryResolveChannelContext(channelId, clanId, out _, out var groupName))
+        {
+            return;
+        }
+
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, groupName);
         if (!string.IsNullOrEmpty(userId))
         {
-            _connectionTracker.LeaveChannel(userId, Context.ConnectionId, channelId);
+            _connectionTracker.LeaveChannel(userId, Context.ConnectionId, groupName);
         }
     }
 

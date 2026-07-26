@@ -4,7 +4,7 @@ Bu dosya, **backend kodunu okumaya gerek kalmadan** frontend geliştirmek için 
 her şeyi içerir: route'lar, gövde şemaları, SignalR hub metotları ve event'leri,
 hata davranışları ve tuzaklar.
 
-**Son güncelleme:** 2026-07-25
+**Son güncelleme:** 2026-07-26
 **Kaynak:** Controller/Hub kodundan doğrudan okunarak yazıldı (swagger tahmini değil).
 
 > Bir şey burada yazılmıyorsa **yok varsayın** ve backend'e sorun. Var olmayan bir
@@ -14,33 +14,37 @@ hata davranışları ve tuzaklar.
 
 ## 0. Temel kurallar — önce bunu okuyun
 
-### 0.1 İki farklı giriş kapısı var
+### 0.1 Giriş kapıları
 
 | Ne | Nereden gidilir | Auth nasıl |
 | --- | --- | --- |
 | **REST API** | API Gateway (`/identity`, `/message`, `/clan`, `/voice`) | `Authorization: Bearer <token>` header |
-| **SignalR hub'ları** | **Gateway'i BYPASS eder** — nginx doğrudan servise proxy'ler | `?access_token=<token>` **query string** |
+| **Message SignalR hub'ı** | API Gateway (`/messagehub`) | `accessTokenFactory` ile Bearer JWT |
+| **Presence/Notification hub'ları** | Nginx doğrudan servise proxy'ler | `?access_token=<token>` **query string** |
 
-⚠️ **Bu en sık yapılan hata.** Hub'lar `Authorization` header'ı ile çalışmaz; SignalR
-WebSocket handshake'inde header gönderemediği için token query string'den okunur.
+Message hub bağlantısı Gateway'de JWT, token sürümü ve klan rolü doğrulandıktan sonra
+MessageService'e aktarılır. WebSocket kullanın; SignalR token'ı query string'e kendisi
+yerleştirir.
 
 ```js
-// DOĞRU
+// DOĞRU — DM bağlantısı
 new HubConnectionBuilder()
-  .withUrl(`${BASE}/messagehub?access_token=${token}`)
-
-// YANLIŞ — 401 alırsınız
-  .withUrl(`${BASE}/messagehub`, { headers: { Authorization: `Bearer ${token}` } })
+  .withUrl(`${BASE}/messagehub`, {
+    accessTokenFactory: () => token,
+    transport: HttpTransportType.WebSockets,
+    skipNegotiation: true,
+  })
 ```
 
 ### 0.2 Base URL'ler
 
 | Ortam | REST | Hub |
 | --- | --- | --- |
-| Local | `http://localhost:5000` | `http://localhost:5107` (message), `http://localhost:5241` (presence), `http://localhost:5160` (notification) |
+| Local | `http://localhost:5000` | `http://localhost:5000` (message), `http://localhost:5241` (presence), `http://localhost:5160` (notification) |
 | Prod | `https://voxify.com.tr` | `https://voxify.com.tr` (nginx aynı origin'den proxy'ler) |
 
-Prod'da hepsi aynı origin — local'de hub'lar servise doğrudan gider, gateway portuna değil.
+Message hub her ortamda Gateway üzerinden gider; Presence ve Notification local'de
+kendi servis portlarını kullanır.
 
 ### 0.3 ⚠️ 401 tuzağı (bilinmesi şart)
 
@@ -270,34 +274,48 @@ Frontend'in buna ihtiyacı yok — katılımcı olmadığınızda ilgili uçlar 
 
 ---
 
-## 5. Mesaj Hub'ı (canlı mesajlaşma) — `/messagehub`
+## 5. Mesaj Hub'ı (canlı mesajlaşma)
 
 ```js
+// Klan bağlantısı: bağlantı yalnızca bu clanId için geçerlidir.
 const conn = new HubConnectionBuilder()
-  .withUrl(`${HUB_BASE}/messagehub?access_token=${token}`)
+  .withUrl(`${GATEWAY_BASE}/messagehub/clanId/${clanId}`, {
+    accessTokenFactory: () => token,
+    transport: HttpTransportType.WebSockets,
+    skipNegotiation: true,
+  })
   .withAutomaticReconnect()
   .build();
 await conn.start();
 ```
 
+DM için ayrı bağlantı adresi `${GATEWAY_BASE}/messagehub` kullanılır. Klan değiştirirken
+mevcut klan bağlantısını kapatıp yeni `clanId` adresine bağlanın.
+
 ### 5.1 Çağıracağınız metotlar
 
 | Metot | İmza | Not |
 | --- | --- | --- |
-| `JoinChannel` | `(channelId)` | Mesaj almaya başlamak için **şart** |
+| `JoinChannel` | `(channelId, clanId)` | Mesaj almaya başlamak için **şart**; DM'de `clanId = null` |
 | `LeaveChannel` | `(channelId)` | |
 | `SendMessage` | `(channelId, clanId, message)` | **DM'de `clanId = null`** |
-| `UpdateMessage` | `(messageId, newContent)` | Sadece kendi mesajınız |
-| `DeleteMessage` | `(messageId, channelId)` | Sadece kendi mesajınız |
+| `UpdateMessage` | `(messageId, clanId, newContent)` | Sadece kendi mesajınız; DM'de `clanId = null` |
+| `DeleteMessage` | `(messageId, channelId, clanId)` | Sadece kendi mesajınız; DM'de `clanId = null` |
 
 > ### ✅ `SendMessage` ile `clanId = null` desteklenir
 > DM için `invoke('SendMessage', conversationId, null, text)` doğru kullanımdır.
 > Mesaj `clanId: null` ile kaydedilir, yayın `channelId` grubuna yapılır,
 > exception atılmaz. Ayrı bir `SendDirectMessage` metodu **yoktur**, gerekmez.
 
-**Sıra önemli:** `JoinChannel` çağırmadan `SendMessage` yaparsanız mesaj kaydedilir
-ama **kendi ekranınıza düşmez** (gruba abone değilsiniz). Sohbet açılırken önce
-`JoinChannel`.
+Klan üyeliği yalnızca WebSocket bağlantısı kurulurken Gateway tarafından
+AuthorizationService'e sorulur. Hub, bağlantıya aktarılan doğrulanmış `clanId` ve
+`OWNER|ADMIN|MEMBER` rolünü kullanır; `JoinChannel`/`SendMessage` sırasında iç REST
+isteği yapılmaz. Metotlara verilen `clanId`, bağlantının klanıyla aynı olmak zorundadır.
+REST okuma/düzenleme/silme işlemlerinde de URL'deki `clanId`, mesaj kaydındaki gerçek
+`ClanId` ile eşleşmek zorundadır.
+
+**Sıra önemli:** `JoinChannel` çağırmadan `SendMessage` reddedilir ve mesaj
+kaydedilmez. Sohbet açılırken önce `JoinChannel` çağırın.
 
 ### 5.2 Dinleyeceğiniz event'ler
 
@@ -309,7 +327,7 @@ ama **kendi ekranınıza düşmez** (gruba abone değilsiniz). Sohbet açılırk
 | `MessageSendFailed` | `string` (sebep) | Yetkisiz kanal |
 | `MessageUpdateFailed` | `messageId` | Sahibi değilsiniz / hata |
 | `MessageDeleteFailed` | `messageId` | " |
-| `JoinChannelFailed` | `channelId` | DM katılımcısı değilsiniz |
+| `JoinChannelFailed` | `channelId` | DM katılımcısı veya klan üyesi değilsiniz |
 
 ⚠️ **Hata event'leri sessizdir** — hub metodu exception atmaz, bunun yerine
 `*Failed` event'i gönderir. Bunları dinlemezseniz hatalar **hiç görünmez.**
@@ -390,12 +408,14 @@ mevcut LiveKit token akışı kullanılır; ses Presence üzerinden taşınmaz.
 ## 7. Sesli görüşme (LiveKit) — `/voice`
 
 ```
-GET /voice/join-room/{roomId}     →  { "token": "<livekit-jwt>" }
+GET /voice/join-room/dm-{conversationId}                 → { "token": "<livekit-jwt>" }
+GET /voice/join-room/{voiceChannelId}/clanId/{clanId}    → { "token": "<livekit-jwt>" }
+DELETE /voice/rooms/{voiceChannelId}/participants/{userId}/clanId/{clanId}
 ```
 
 | Oda türü | `roomId` |
 | --- | --- |
-| Klan ses kanalı | `{voiceChannelId}` |
+| Klan ses kanalı | `{voiceChannelId}` + URL'de `clanId` |
 | **DM ses odası** | **`dm-{conversationId}`** |
 
 > ### ✅ DM için `dm-{conversationId}` kullanılır
@@ -404,6 +424,15 @@ GET /voice/join-room/{roomId}     →  { "token": "<livekit-jwt>" }
 
 Token **6 saat** geçerli; `canPublish`/`canSubscribe`/`canPublishData` açık.
 LiveKit sunucu adresi prod'da `wss://voxify.com.tr/livekit`.
+
+Klan ses kanalına girişte kullanıcının klan üyeliği Gateway tarafından doğrulanır.
+LiveKit'in iç oda adı `clan:{clanId}:voice:{voiceChannelId}` olarak ayrıştırıldığı için
+başka bir klanın oda kimliği o klanın gerçek odasına erişim sağlamaz. Katılımcı çıkarma
+endpoint'ini yalnızca `OWNER` ve `ADMIN` kullanabilir; başarılı yanıt:
+
+```json
+{ "message": "Participant removed from voice channel" }
+```
 
 **Akış:**
 ```js

@@ -60,8 +60,25 @@ builder
             // (burada sıfır olarak ayarlanmış, yani tolerans yok).
             ClockSkew = TimeSpan.Zero,
         };
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                if (context.HttpContext.Request.Path.StartsWithSegments("/messagehub"))
+                {
+                    var accessToken = context.Request.Query["access_token"].FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(accessToken))
+                    {
+                        context.Token = accessToken;
+                    }
+                }
+
+                return Task.CompletedTask;
+            }
+        };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddSignalR();
 
 // Ocelot, eşleşmeyen bir path için bile authentication middleware'ini
 // route matching'den ÖNCE çalıştırıyor; bu yüzden var olmayan bir route'a
@@ -83,7 +100,7 @@ static Regex BuildUpstreamRegex(string template)
     pattern = Regex.Replace(pattern, @"\{[^/{}]+\}", "[^/]+");
     pattern = Regex.Escape(pattern).Replace("__EVERYTHING__", ".*");
     // Regex.Escape yukarıda [^/]+ içindeki karakterleri de escape eder, geri düzelt
-    pattern = pattern.Replace(@"\[\^/\]\+", "[^/]+");
+    pattern = pattern.Replace(@"\[\^/]\+", "[^/]+");
     return new Regex("^" + pattern + "/?$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 }
 
@@ -95,6 +112,7 @@ var authServiceBaseUrl = builder.Configuration["AuthService:BaseUrl"]
 builder.Services.AddHttpClient("AuthService", client =>
 {
     client.BaseAddress = new Uri(authServiceBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(3);
 });
 
 var redisConnectionString = builder.Configuration["Redis:ConnectionString"]
@@ -117,6 +135,7 @@ builder.Services
 var app = builder.Build();
 
 app.UseCors("AllowTauri");
+app.UseWebSockets();
 
 // Gelen isteklerden sahte X-User-* header'larını temizle (header injection koruması)
 app.Use(async (context, next) =>
@@ -125,6 +144,7 @@ app.Use(async (context, next) =>
     context.Request.Headers.Remove("X-User-Name");
     context.Request.Headers.Remove("X-User-Avatar");
     context.Request.Headers.Remove("X-Clan-Role");
+    context.Request.Headers.Remove("X-Clan-Id");
     context.Request.Headers.Remove("X-Token-Version");
     await next();
 });
@@ -223,90 +243,126 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
-app.Use(
-    async (context, next) =>
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    var isMessageHubRequest = context.Request.Path.StartsWithSegments("/messagehub");
+
+    if (context.User.Identity?.IsAuthenticated != true)
     {
-        if (context.User.Identity?.IsAuthenticated == true)
+        if (isMessageHubRequest)
         {
-            // 1. KULLANICI KİMLİĞİ KONTROLÜ
-            var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
-                         ?? context.User.FindFirst("sub")?.Value 
-                         ?? string.Empty;
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
 
-            var userName = context.User.FindFirst(ClaimTypes.Name)?.Value 
-                           ?? context.User.FindFirst("unique_name")?.Value 
-                           ?? string.Empty;
+        await next();
+        return;
+    }
 
-            context.Request.Headers.Append("X-User-Id", userId);
-            context.Request.Headers.Append("X-User-Name", userName);
+    var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                 ?? context.User.FindFirst("sub")?.Value
+                 ?? string.Empty;
+    var userName = context.User.FindFirst(ClaimTypes.Name)?.Value
+                   ?? context.User.FindFirst("unique_name")?.Value
+                   ?? string.Empty;
 
-            // ========================================================
-            // 2. KÜRESEL CLAN ROLÜ KONTROLÜ (SENİN İSTEDİĞİN YER)
-            // ========================================================
-            var path = context.Request.Path.Value;
-            var match = Regex.Match(path ?? "", @"/clanId/([a-fA-F0-9\-]{36})", RegexOptions.IgnoreCase);
+    context.Request.Headers["X-User-Id"] = userId;
+    context.Request.Headers["X-User-Name"] = userName;
 
-            if (match.Success && !string.IsNullOrEmpty(userId))
+    var match = Regex.Match(
+        path,
+        @"/clanId/([a-fA-F0-9\-]{36})(?:/|$)",
+        RegexOptions.IgnoreCase
+    );
+
+    if (match.Success && !string.IsNullOrEmpty(userId))
+    {
+        var clanId = match.Groups[1].Value;
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        var httpClientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
+        var authClient = httpClientFactory.CreateClient("AuthService");
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await authClient.GetAsync($"/roles?userId={Uri.EscapeDataString(userId)}&clanId={Uri.EscapeDataString(clanId)}");
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "AuthService rol sorgusu basarisiz. userId={UserId}, clanId={ClanId}",
+                userId,
+                clanId
+            );
+            if (isMessageHubRequest)
             {
-                var clanId = match.Groups[1].Value;
-                var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-                
-                // Program.cs içinden HttpClient'ı çekiyoruz
-                var httpClientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
-                var authClient = httpClientFactory.CreateClient("AuthService");
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                return;
+            }
 
-                // Java'ya soruyoruz
-                HttpResponseMessage response;
+            await next();
+            return;
+        }
+        catch (TaskCanceledException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "AuthService rol sorgusu zaman asimina ugradi. userId={UserId}, clanId={ClanId}",
+                userId,
+                clanId
+            );
+            if (isMessageHubRequest)
+            {
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                return;
+            }
+
+            await next();
+            return;
+        }
+
+        string resolvedRole = null;
+        var roleResponseStatusCode = response.StatusCode;
+        if (response.IsSuccessStatusCode)
+        {
+            var jsonString = await response.Content.ReadAsStringAsync();
+            if (!string.IsNullOrWhiteSpace(jsonString))
+            {
                 try
                 {
-                    response = await authClient.GetAsync($"/roles?userId={userId}&clanId={clanId}");
-                }
-                catch (HttpRequestException ex)
-                {
-                    logger.LogWarning(ex, "AuthService rol sorgusu basarisiz. userId={UserId}, clanId={ClanId}", userId, clanId);
-                    await next();
-                    return;
-                }
-
-                logger.LogInformation(response.ToString());
-                
-               if (response.IsSuccessStatusCode)
-                {
-                    var jsonString = await response.Content.ReadAsStringAsync();
-                    
-                    if (!string.IsNullOrWhiteSpace(jsonString))
+                    using var jsonDoc = JsonDocument.Parse(jsonString);
+                    if (jsonDoc.RootElement.TryGetProperty("roles", out var roleElement))
                     {
-                        try
-                        {
-                            // 1. Gelen metni JSON objesine çevir
-                            using var jsonDoc = JsonDocument.Parse(jsonString);
-                            
-                            // 2. İçinde "roles" adında bir alan var mı diye bak
-                            if (jsonDoc.RootElement.TryGetProperty("roles", out var roleElement))
-                            {
-                                var cleanRole = roleElement.GetString();
-                                
-                                if (!string.IsNullOrEmpty(cleanRole))
-                                {
-                                    // 3. Alt servislere sadece tertemiz "OWNER" veya "ADMIN" yazısını yolla!
-                                    context.Request.Headers.Append("X-Clan-Role", cleanRole.ToUpper());
-                                    logger.LogInformation("Zenginleştirilen Rol: {Role}", cleanRole);
-                                }
-                            }
-                        }
-                        catch (JsonException)
-                        {
-                            // Eğer Java'dan dönen şey geçerli bir JSON değilse (Düz metinse)
-                            // Sistemin çökmesini engeller ve düz metin olarak eklemeyi dener
-                            context.Request.Headers.Append("X-Clan-Role", jsonString.Trim().Trim('"').ToUpper());
-                        }
+                        resolvedRole = roleElement.GetString()?.ToUpperInvariant();
                     }
+                }
+                catch (JsonException)
+                {
+                    resolvedRole = jsonString.Trim().Trim('"').ToUpperInvariant();
                 }
             }
         }
-        await next();
+        response.Dispose();
+
+        var allowedRole = resolvedRole is "OWNER" or "ADMIN" or "MEMBER";
+        if (allowedRole)
+        {
+            context.Request.Headers["X-Clan-Id"] = clanId;
+            context.Request.Headers["X-Clan-Role"] = resolvedRole!;
+        }
+        else if (isMessageHubRequest)
+        {
+            context.Response.StatusCode = (int)roleResponseStatusCode >= 500
+                ? StatusCodes.Status503ServiceUnavailable
+                : StatusCodes.Status403Forbidden;
+            return;
+        }
     }
-);
+
+    await next();
+});
 
 await app.UseOcelot();
 app.Run();

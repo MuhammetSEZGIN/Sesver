@@ -146,7 +146,10 @@ services:
     image: livekit/livekit-server:latest
     container_name: sesver-local-livekit-server
     restart: unless-stopped
-    command: ["--config", "/etc/livekit.local.yaml", "--node-ip", "127.0.0.1"]
+    # WebRTC medya adayı tarayıcının erişebileceği host IP olmalıdır. Aynı
+    # makinedeki gizlenmiş mDNS adaylarında bile 127.0.0.1 Docker container'ı
+    # için güvenilir değildir; geliştiriciye özel değer .env'den gelir.
+    command: ["--config", "/etc/livekit.local.yaml", "--node-ip", "${LIVEKIT_NODE_IP:-127.0.0.1}"]
     volumes:
       - ./livekit.local.yaml:/etc/livekit.local.yaml:ro
     ports:

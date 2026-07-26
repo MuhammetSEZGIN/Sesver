@@ -15,6 +15,8 @@ public record CallSession(
     string ConversationId,
     string CallerUserId,
     string CalleeUserId,
+    string CallerConnectionId,
+    string? CalleeConnectionId,
     DateTime CreatedAt,
     CallStatus Status)
 {

@@ -40,11 +40,12 @@ namespace MessageService.Controllers
         [Authorize(Roles = "OWNER,ADMIN,MEMBER")]
         public async Task<IActionResult> GetMessagesInChannelAsync(
             string channelId,
+            string clanId,
             [FromQuery] int limit = 20,
             [FromQuery] int page = 1
         )
         {
-            return await GetMessagesInternalAsync(channelId, limit, page);
+            return await GetMessagesInternalAsync(channelId, clanId, limit, page);
         }
 
         [HttpGet]
@@ -71,16 +72,22 @@ namespace MessageService.Controllers
                 return Forbid();
             }
 
-            return await GetMessagesInternalAsync(channelId, limit, page);
+            return await GetMessagesInternalAsync(channelId, null, limit, page);
         }
 
         private async Task<IActionResult> GetMessagesInternalAsync(
             string channelId,
+            string clanId,
             int limit,
             int page
         )
         {
-            var result = await _messageService.GetMessagesInChannelAsync(channelId, limit, page);
+            var result = await _messageService.GetMessagesInChannelAsync(
+                channelId,
+                clanId,
+                limit,
+                page
+            );
 
             if (!result.IsSuccess)
             {
@@ -91,6 +98,7 @@ namespace MessageService.Controllers
                 .Data.Select(m => new MessageDto
                 {
                     Id = m.Id,
+                    ClanId = m.ClanId,
                     UserName = m.UserName ?? "Unknown",
                     ChannelId = m.ChannelId,
                     AvatarUrl = m.AvatarUrl ?? string.Empty,
@@ -105,10 +113,10 @@ namespace MessageService.Controllers
 
         [HttpDelete("{messageId}/clanId/{clanId}")]
         [Authorize(Roles = "OWNER,ADMIN,MEMBER")]
-        public async Task<IActionResult> DeleteMessageAsync(ObjectId messageId)
+        public async Task<IActionResult> DeleteMessageAsync(ObjectId messageId, string clanId)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var result = await _messageService.DeleteMessageAsync(messageId, userId);
+            var result = await _messageService.DeleteMessageAsync(messageId, userId, clanId);
 
             if (!result.IsSuccess)
             {
@@ -122,11 +130,12 @@ namespace MessageService.Controllers
         [Authorize(Roles = "OWNER,ADMIN,MEMBER")]
         public async Task<IActionResult> UpdateMessage(
             [FromBody] string message,
-            ObjectId messageId
+            ObjectId messageId,
+            string clanId
         )
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            var result = await _messageService.UpdateMessage(messageId, message, userId);
+            var result = await _messageService.UpdateMessage(messageId, message, userId, clanId);
             if (!result.IsSuccess)
             {
                 return StatusCode(result.StatusCode, new { message = result.Message });

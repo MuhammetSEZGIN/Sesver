@@ -1,10 +1,13 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using MassTransit;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NotificationService.Data;
 using NotificationService.Hubs;
+using NotificationService.Handlers;
 using NotificationService.Interfaces;
 using NotificationService.RabbitMQ;
 using NotificationService.Services;
@@ -23,7 +26,11 @@ var jwtAudience = builder.Configuration["Jwt:Audience"]
     ?? throw new InvalidOperationException("Jwt:Audience is not configured.");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddScheme<AuthenticationSchemeOptions, GatewayAuthenticationHandler>(
+        "GatewayAuth",
+        null
+    )
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -55,8 +62,10 @@ var origins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string
 builder.Services.AddCors(options => options.AddPolicy("AllowTauri", policy =>
     policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 builder.Services.AddAuthorization();
-builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddControllers().AddJsonOptions(options =>
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSignalR().AddJsonProtocol(options =>
+    options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddScoped<INotificationService, NotificationManager>();
 builder.Services.AddNotificationRabbitMq(builder.Configuration);
 

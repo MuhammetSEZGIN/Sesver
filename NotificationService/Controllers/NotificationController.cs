@@ -8,7 +8,7 @@ namespace NotificationService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(AuthenticationSchemes = "Bearer")]
+[Authorize(AuthenticationSchemes = "GatewayAuth")]
 public class NotificationController(INotificationService service) : ControllerBase
 {
     private string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
@@ -39,4 +39,11 @@ public class NotificationController(INotificationService service) : ControllerBa
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken) =>
         await service.DeleteAsync(UserId, id, cancellationToken) ? NoContent() : NotFound();
+
+    [HttpDelete]
+    public async Task<IActionResult> DeleteAll(CancellationToken cancellationToken)
+    {
+        await service.DeleteAllAsync(UserId, cancellationToken);
+        return NoContent();
+    }
 }

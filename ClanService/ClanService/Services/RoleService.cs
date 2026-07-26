@@ -51,6 +51,14 @@ public class RoleService : IRoleService
                 Role = roleName,
                 EventType = ClanRoleEventType.ASSIGN_ROLE.ToString()
             });
+            await _clanMessageProducer.PublishClanMembershipChangedMessageAsync(new ClanMembershipChangedMessage
+            {
+                MembershipId = existingMembership.Id,
+                ClanId = existingMembership.ClanId.ToString(),
+                UserId = existingMembership.UserId,
+                Role = roleName,
+                ChangeType = ClanMembershipChangeType.RoleChanged
+            });
             _logger.LogInformation("Role of membership {MembershipId} updated to {RoleName}.", membershipId, roleName);
             return true;
         }

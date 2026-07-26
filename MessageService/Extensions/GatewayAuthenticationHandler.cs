@@ -30,10 +30,15 @@ public class GatewayAuthenticationHandler : AuthenticationHandler<Authentication
         };
 
         var role = Request.Headers["X-Clan-Role"].FirstOrDefault();
+        var clanId = Request.Headers["X-Clan-Id"].FirstOrDefault();
         Logger.LogInformation("[AUTH HANDLER] UserId: {UserId} | Role: {Role}", userId, role ?? "NULL");
         if (!string.IsNullOrEmpty(role))
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+        if (!string.IsNullOrEmpty(clanId))
+        {
+            claims.Add(new Claim("clan_id", clanId));
         }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);

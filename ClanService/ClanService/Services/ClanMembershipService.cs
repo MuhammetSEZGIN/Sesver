@@ -46,6 +46,16 @@ namespace ClanService.Services
                     Role = ClanRole.MEMBER.ToString(),
                     EventType = ClanRoleEventType.ASSIGN_ROLE.ToString()
                 });
+                await _clanMessageProducer.PublishClanMembershipChangedMessageAsync(new ClanMembershipChangedMessage
+                {
+                    MembershipId = membership.Id,
+                    ClanId = membership.ClanId.ToString(),
+                    UserId = membership.UserId,
+                    UserName = existingUser.Username,
+                    AvatarUrl = existingUser.AvatarUrl,
+                    Role = membership.Role,
+                    ChangeType = ClanMembershipChangeType.Joined
+                });
                 _logger.LogInformation("User {UserId} added to clan {ClanId} successfully.", membership.UserId, membership.ClanId);
                 return (membership, "User added to the clan successfully.");
             }
@@ -89,6 +99,14 @@ namespace ClanService.Services
                     Role = null,
                     EventType = ClanRoleEventType.REMOVE_ROLE.ToString()
                 });
+                await _clanMessageProducer.PublishClanMembershipChangedMessageAsync(new ClanMembershipChangedMessage
+                {
+                    MembershipId = membership.Id,
+                    ClanId = membership.ClanId.ToString(),
+                    UserId = membership.UserId,
+                    Role = membership.Role,
+                    ChangeType = ClanMembershipChangeType.Removed
+                });
                 _logger.LogInformation("User {UserId} has left clan {ClanId} successfully.", userId, clanId);
                 return (membership, "User has left the clan successfully.");
             }
@@ -114,6 +132,14 @@ namespace ClanService.Services
                     ClanId = existing.ClanId.ToString(),
                     Role = null,
                     EventType = ClanRoleEventType.REMOVE_ROLE.ToString()
+                });
+                await _clanMessageProducer.PublishClanMembershipChangedMessageAsync(new ClanMembershipChangedMessage
+                {
+                    MembershipId = existing.Id,
+                    ClanId = existing.ClanId.ToString(),
+                    UserId = existing.UserId,
+                    Role = existing.Role,
+                    ChangeType = ClanMembershipChangeType.Removed
                 });
                 return true;
             }

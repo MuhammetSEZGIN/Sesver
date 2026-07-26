@@ -54,9 +54,9 @@ namespace MessageService.Controllers
         }
 
         // Diğer servislerin (ör. VoiceService) DM ses odası yetkisini doğrulamak için
-        // kullandığı iç endpoint. Bearer JWT ile korunuyor (gateway header'ına gerek yok).
+        // kullandığı iç endpoint. Servisler arası çağrıda güvenilir X-User-Id kullanılır.
         [HttpGet("conversations/{conversationId}/is-participant")]
-        [Authorize(AuthenticationSchemes = "Bearer")]
+        [Authorize]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> IsParticipant(string conversationId)
@@ -71,7 +71,7 @@ namespace MessageService.Controllers
         }
 
         [HttpGet("conversations/{conversationId}/call-context")]
-        [Authorize(AuthenticationSchemes = "Bearer")]
+        [Authorize]
         [ProducesResponseType(typeof(DmCallContextDto), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status403Forbidden)]
         public async Task<IActionResult> GetCallContext(string conversationId)

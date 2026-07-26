@@ -27,4 +27,18 @@ public class PresenceRepositoryTests
         Assert.Empty(await repository.GetWatchersOfUser("a"));
         Assert.Equal(["connection"], await repository.GetWatchersOfUser("b"));
     }
+
+    [Fact]
+    public async Task ClanSubscriptionCanBeAddedAndRemovedForExistingConnection()
+    {
+        var repository = new PresenceRepository();
+        await repository.SetConnectionClans("connection", ["one"]);
+
+        await repository.AddConnectionClan("connection", "two");
+        await repository.AddConnectionClan("connection", "two");
+        Assert.Equal(["one", "two"], await repository.GetConnectionClans("connection"));
+
+        await repository.RemoveConnectionClan("connection", "one");
+        Assert.Equal(["two"], await repository.GetConnectionClans("connection"));
+    }
 }

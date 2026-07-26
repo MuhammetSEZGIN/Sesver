@@ -41,7 +41,7 @@ namespace ClanService.Controllers
         }
 
         [HttpGet("{voiceChannelId}")]
-        [Authorize(Roles = "MUHAMMET")]
+        [Authorize(Roles = "OWNER,ADMIN,MEMBER")]
         public async Task<IActionResult> GetVoiceChannelById(Guid voiceChannelId)
         {
             var channel = await _voiceChannelService.GetVoiceChannelByIdAsync(voiceChannelId);

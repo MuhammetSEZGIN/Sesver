@@ -21,10 +21,15 @@ public class MessageRepository : Repository<Message, ObjectId>, IMessageReposito
         _context = context;
     }
 
-    public async Task<IEnumerable<MessageDto>> GetMessagesInChannelAsync(string channelId, int limit, int page)
+    public async Task<IEnumerable<MessageDto>> GetMessagesInChannelAsync(
+        string channelId,
+        string clanId,
+        int limit,
+        int page
+    )
     {
         var pipeline = _context.Messages.Aggregate()
-        .Match(x => x.ChannelId == channelId)
+        .Match(x => x.ChannelId == channelId && x.ClanId == clanId)
         .SortByDescending(x => x.CreatedAt)
         .Skip((page - 1) * limit)
         .Limit(limit)
@@ -42,6 +47,7 @@ public class MessageRepository : Repository<Message, ObjectId>, IMessageReposito
         .Project(m => new MessageDto
         {
             Id = m.Id.ToString(),
+            ClanId = m.ClanId,
             UserName = m.Users.UserName,
             ChannelId = m.ChannelId,
             AvatarUrl = m.Users.AvatarUrl,
@@ -54,15 +60,22 @@ public class MessageRepository : Repository<Message, ObjectId>, IMessageReposito
 
     }
 
-    public async Task<IEnumerable<MessageDto>> SearchInChannelAsync(string channelId, string searchText, int limit, int page)
+    public async Task<IEnumerable<MessageDto>> SearchInChannelAsync(
+        string channelId,
+        string clanId,
+        string searchText,
+        int limit,
+        int page
+    )
     {
         if (string.IsNullOrWhiteSpace(searchText))
         {
-            return await GetMessagesInChannelAsync(channelId, limit, page);
+            return await GetMessagesInChannelAsync(channelId, clanId, limit, page);
         }
 
         var filter = Builders<Message>.Filter.And(
             Builders<Message>.Filter.Eq(x => x.ChannelId, channelId),
+            Builders<Message>.Filter.Eq(x => x.ClanId, clanId),
             Builders<Message>.Filter.Text(searchText)
         );
 
@@ -79,6 +92,7 @@ public class MessageRepository : Repository<Message, ObjectId>, IMessageReposito
         ).Project(m => new MessageDto
         {
             Id = m.Id.ToString(),
+            ClanId = m.ClanId,
             UserName = m.Users.UserName,
             ChannelId = m.ChannelId,
             AvatarUrl = m.Users.AvatarUrl,

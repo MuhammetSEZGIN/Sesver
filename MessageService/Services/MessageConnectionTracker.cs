@@ -34,6 +34,10 @@ public class MessageConnectionTracker : IMessageConnectionTracker
     public bool IsUserInChannel(string userId, string channelId) =>
         _channelConnections.TryGetValue((userId, channelId), out var connections) && !connections.IsEmpty;
 
+    public bool IsConnectionInChannel(string userId, string connectionId, string channelId) =>
+        _connectionChannels.TryGetValue(connectionId, out var memberships)
+        && memberships.ContainsKey((userId, channelId));
+
     private void RemoveMembership(string connectionId, (string UserId, string ChannelId) membership)
     {
         if (_channelConnections.TryGetValue(membership, out var connections))

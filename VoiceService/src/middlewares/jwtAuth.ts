@@ -9,6 +9,15 @@ type TokenClaims = JwtPayload & {
 };
 
 export function jwtAuth(req: Request, res: Response, next: NextFunction): void {
+  const gatewayUserId = req.header("X-User-Id");
+  const gatewayUserName = req.header("X-User-Name");
+  if (gatewayUserId && gatewayUserName) {
+    res.locals.user = { userId: gatewayUserId, userName: gatewayUserName };
+    res.locals.clanRole = req.header("X-Clan-Role")?.toUpperCase();
+    next();
+    return;
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Missing or invalid Authorization header" });
