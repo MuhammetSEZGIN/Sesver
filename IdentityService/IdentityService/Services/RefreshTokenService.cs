@@ -17,18 +17,21 @@ public class RefreshTokenService : IRefreshTokenService
     private readonly IConfiguration _config;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<RefreshTokenService> _logger;
+    private readonly ITokenVersionStore _tokenVersionStore;
 
     public RefreshTokenService(
         IConfiguration config,
         IdentityDbContext context,
         UserManager<ApplicationUser> userManager,
-        ILogger<RefreshTokenService> logger
+        ILogger<RefreshTokenService> logger,
+        ITokenVersionStore tokenVersionStore
     )
     {
         _context = context;
         _config = config;
         _userManager = userManager;
         _logger = logger;
+        _tokenVersionStore = tokenVersionStore;
     }
 
     public Task<string> GenerateRefreshTokenAsync()
@@ -58,6 +61,17 @@ public class RefreshTokenService : IRefreshTokenService
                     (int)HttpStatusCode.NotFound
                 );
             }
+
+            // Gateway oturumu yalnızca Redis'teki sürüm üzerinden doğrular. Redis
+            // hazır değilse doğrulanamayacak bir JWT üretmeyiz.
+            if (!await _tokenVersionStore.SetAtLeastAsync(user.Id, user.TokenVersion))
+            {
+                return ApiResponse<RefreshTokenResultDto>.Failed(
+                    "Session service is temporarily unavailable.",
+                    statusCode: (int)HttpStatusCode.ServiceUnavailable
+                );
+            }
+
             // Kullanıcının tüm tokenlerini al
             var userTokens = await _context
                 .UserRefreshTokens.Where(rt => rt.UserId == userId)
@@ -175,6 +189,74 @@ public class RefreshTokenService : IRefreshTokenService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error revoking all tokens for user: {UserId}", userId);
+            return false;
+        }
+    }
+
+    public async Task<bool> InvalidateAllUserSessionsAsync(string userId)
+    {
+        try
+        {
+            var databaseVersion = await _context
+                .Users.AsNoTracking()
+                .Where(user => user.Id == userId)
+                .Select(user => (int?)user.TokenVersion)
+                .SingleOrDefaultAsync();
+            if (!databaseVersion.HasValue)
+            {
+                return false;
+            }
+
+            // Redis önce artırılır. Sonraki DB işlemi başarısız olsa dahi eski
+            // access token'lar Gateway'de yeniden geçerli hale gelemez.
+            var nextVersion = await _tokenVersionStore.IncrementAsync(
+                userId,
+                databaseVersion.Value
+            );
+            if (!nextVersion.HasValue)
+            {
+                return false;
+            }
+
+            if (_context.Database.IsRelational())
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+
+                await _context
+                    .Users.Where(user =>
+                        user.Id == userId && user.TokenVersion < nextVersion.Value
+                    )
+                    .ExecuteUpdateAsync(setters =>
+                        setters.SetProperty(
+                            user => user.TokenVersion,
+                            nextVersion.Value
+                        )
+                    );
+
+                await _context
+                    .UserRefreshTokens.Where(token => token.UserId == userId)
+                    .ExecuteDeleteAsync();
+                await transaction.CommitAsync();
+                return true;
+            }
+
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return false;
+            }
+
+            user.TokenVersion = Math.Max(user.TokenVersion, nextVersion.Value);
+            var userTokens = await _context
+                .UserRefreshTokens.Where(token => token.UserId == userId)
+                .ToListAsync();
+            _context.UserRefreshTokens.RemoveRange(userTokens);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error invalidating all sessions for user: {UserId}", userId);
             return false;
         }
     }

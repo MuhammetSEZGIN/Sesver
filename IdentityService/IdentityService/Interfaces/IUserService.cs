@@ -17,6 +17,6 @@ public interface IUserService
     Task <IdentityResult>  DeleteUserAsync(string id);
     Task<ApplicationUser> GetUserByIdAsync(string id);
     Task<UserMeDto> GetMeAsync(string userId);
-    Task<IdentityResult> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
+    Task<ApiResponse<object>> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
     Task<List<UserSearchResultDto>> SearchUsersAsync(string requestingUserId, string query, int page, int limit);
 }

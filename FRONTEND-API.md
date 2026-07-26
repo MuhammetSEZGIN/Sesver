@@ -113,8 +113,9 @@ de göndermek oturum listesinde (`/my-sessions`) cihazın anlamlı görünmesini
 zaman aynı `200` yanıtını verir. E-postadaki bağlantı frontend'in
 `/reset-password?email=...&token=...` sayfasını açar; bu iki query değeri
 `reset-password` isteğinin gövdesine taşınmalıdır. Bağlantı tek kullanımlıktır ve 6
-saat geçerlidir. Başarılı sıfırlama kullanıcının bütün refresh token oturumlarını
-iptal eder.
+saat geçerlidir. Başarılı sıfırlama kullanıcının bütün access ve refresh token
+oturumlarını geçersiz kılar. Frontend elindeki token'ları silip login ekranına
+yönlendirmelidir.
 
 **Login/refresh yanıtı** `ApiResponse<T>` sarmalayıcısıyla döner — `statusCode` gövdenin
 **içinde de** vardır:
@@ -149,6 +150,20 @@ iptal eder.
 | PUT | `/identity/user/email` | `{ email }` — adresi değiştirir ve doğrulama maili yollar |
 | POST | `/identity/user/change-password` | `{ currentPassword, newPassword }` |
 | GET | `/identity/user/search?q=&page=&limit=` | Kullanıcı ara (arkadaş eklemek için) |
+
+`POST /change-password` başarılı olduğunda mevcut cihaz dahil bütün oturumlar
+kapatılır. Başarı yanıtından hemen sonra frontend access/refresh token'larını ve
+oturuma bağlı kullanıcı state'ini temizleyip login ekranına yönlendirmelidir.
+
+Gateway aşağıdaki `401` yanıtını döndürürse refresh denenmemeli; token'lar doğrudan
+silinip login ekranına geçilmelidir:
+
+```json
+{ "message": "Session is no longer valid. Please sign in again." }
+```
+
+Oturum sürümü doğrulanırken ortak Redis geçici olarak erişilemiyorsa `503`
+döner. Bu durumda oturum silinmemeli; kullanıcıya tekrar deneme gösterilmelidir.
 
 `GET /me` → **`UserMeDto`**
 ```json

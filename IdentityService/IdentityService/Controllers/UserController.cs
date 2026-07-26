@@ -69,11 +69,7 @@ namespace IdentityService.Controllers
                 model.CurrentPassword,
                 model.NewPassword
             );
-            if (result.Succeeded)
-            {
-                return Ok(new { Message = "Password changed successfully" });
-            }
-            return BadRequest(result.Errors);
+            return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
         [HttpGet("search")]

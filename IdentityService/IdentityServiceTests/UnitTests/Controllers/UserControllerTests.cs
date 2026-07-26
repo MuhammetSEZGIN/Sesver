@@ -522,13 +522,18 @@ namespace IdentityServiceTests.UnitTests.Controllers
 
             _mockUserService
                 .Setup(x => x.ChangePasswordAsync(TestUserId, model.CurrentPassword, model.NewPassword))
-                .ReturnsAsync(IdentityResult.Success);
+                .ReturnsAsync(
+                    ApiResponse<object>.Success(
+                        "Password changed successfully. Please sign in again."
+                    )
+                );
 
             // Act
             var result = await _controller.ChangePassword(model);
 
             // Assert
-            Assert.IsType<OkObjectResult>(result);
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(200, objectResult.StatusCode);
         }
 
         [Fact]
@@ -541,20 +546,21 @@ namespace IdentityServiceTests.UnitTests.Controllers
                 NewPassword = "NewPass1!"
             };
 
-            var errors = new[]
-            {
-                new IdentityError { Code = "PasswordMismatch", Description = "Incorrect password" }
-            };
-
             _mockUserService
                 .Setup(x => x.ChangePasswordAsync(TestUserId, model.CurrentPassword, model.NewPassword))
-                .ReturnsAsync(IdentityResult.Failed(errors));
+                .ReturnsAsync(
+                    ApiResponse<object>.Failed(
+                        "Password could not be changed.",
+                        new[] { "Incorrect password" }
+                    )
+                );
 
             // Act
             var result = await _controller.ChangePassword(model);
 
             // Assert
-            Assert.IsType<BadRequestObjectResult>(result);
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(400, objectResult.StatusCode);
         }
 
         #endregion

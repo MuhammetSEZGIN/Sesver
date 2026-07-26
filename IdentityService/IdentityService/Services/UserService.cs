@@ -19,18 +19,21 @@ namespace IdentityService.Services
         private readonly IEmailService _mailService;
         private readonly ILogger<UserService> _logger;
         private readonly IConfiguration _config;
+        private readonly IRefreshTokenService _refreshTokenService;
 
         public UserService(
             UserManager<ApplicationUser> userManager,
             IEmailService mailService,
             ILogger<UserService> logger,
-            IConfiguration config
+            IConfiguration config,
+            IRefreshTokenService refreshTokenService
         )
         {
             _userManager = userManager;
             _mailService = mailService;
             _logger = logger;
             _config = config;
+            _refreshTokenService = refreshTokenService;
         }
 
         public async Task<IdentityResult> UpdateUserAsync(string userId, UpdateUserModel model)
@@ -215,7 +218,7 @@ namespace IdentityService.Services
             };
         }
 
-        public async Task<IdentityResult> ChangePasswordAsync(
+        public async Task<ApiResponse<object>> ChangePasswordAsync(
             string userId,
             string currentPassword,
             string newPassword
@@ -225,7 +228,7 @@ namespace IdentityService.Services
             if (user == null)
             {
                 _logger.LogWarning("ChangePassword failed: user with id {UserId} not found", userId);
-                return IdentityResult.Failed(new IdentityError { Description = "User not found" });
+                return ApiResponse<object>.NotFound("User not found");
             }
 
             var result = await _userManager.ChangePasswordAsync(
@@ -235,17 +238,36 @@ namespace IdentityService.Services
             );
             if (result.Succeeded)
             {
+                var invalidated = await _refreshTokenService.InvalidateAllUserSessionsAsync(userId);
+                if (!invalidated)
+                {
+                    _logger.LogCritical(
+                        "Password changed but sessions could not be invalidated for user {UserId}",
+                        userId
+                    );
+                    return ApiResponse<object>.Failed(
+                        "Password changed, but active sessions could not be closed.",
+                        null,
+                        (int)System.Net.HttpStatusCode.InternalServerError
+                    );
+                }
+
                 _logger.LogInformation("Password changed successfully for user {UserId}", userId);
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "ChangePassword failed for user id {UserId}. Errors: {Errors}",
-                    userId,
-                    string.Join(", ", result.Errors.Select(e => e.Description))
+                return ApiResponse<object>.Success(
+                    "Password changed successfully. Please sign in again.",
+                    (int)System.Net.HttpStatusCode.OK
                 );
             }
-            return result;
+
+            _logger.LogWarning(
+                "ChangePassword failed for user id {UserId}. Errors: {Errors}",
+                userId,
+                string.Join(", ", result.Errors.Select(e => e.Description))
+            );
+            return ApiResponse<object>.Failed(
+                "Password could not be changed.",
+                result.Errors.Select(error => error.Description)
+            );
         }
 
         public async Task<List<UserSearchResultDto>> SearchUsersAsync(

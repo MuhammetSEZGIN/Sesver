@@ -29,13 +29,15 @@ public class UserServiceTests
 
     private static UserService CreateService(
         Mock<UserManager<ApplicationUser>> userManager,
-        Mock<IEmailService> emailService
+        Mock<IEmailService> emailService,
+        Mock<IRefreshTokenService> refreshTokenService = null
     ) =>
         new UserService(
             userManager.Object,
             emailService.Object,
             Mock.Of<ILogger<UserService>>(),
-            new ConfigurationBuilder().Build()
+            new ConfigurationBuilder().Build(),
+            (refreshTokenService ?? new Mock<IRefreshTokenService>()).Object
         );
 
     [Fact]
@@ -147,6 +149,71 @@ public class UserServiceTests
         emailService.Verify(
             x => x.SendEmailConfirmationAsync(user.Id, confirmationUrl),
             Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_Success_InvalidatesEverySession()
+    {
+        var user = new ApplicationUser { Id = "user-1", UserName = "testuser" };
+        var userManager = BuildUserManager();
+        userManager.Setup(x => x.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager
+            .Setup(x => x.ChangePasswordAsync(user, "OldPass@123", "NewPass@123"))
+            .ReturnsAsync(IdentityResult.Success);
+        var refreshTokenService = new Mock<IRefreshTokenService>();
+        refreshTokenService
+            .Setup(x => x.InvalidateAllUserSessionsAsync(user.Id))
+            .ReturnsAsync(true);
+        var service = CreateService(
+            userManager,
+            new Mock<IEmailService>(),
+            refreshTokenService
+        );
+
+        var result = await service.ChangePasswordAsync(
+            user.Id,
+            "OldPass@123",
+            "NewPass@123"
+        );
+
+        Assert.True(result.IsSuccessfull);
+        refreshTokenService.Verify(
+            x => x.InvalidateAllUserSessionsAsync(user.Id),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_InvalidPassword_DoesNotInvalidateSessions()
+    {
+        var user = new ApplicationUser { Id = "user-1", UserName = "testuser" };
+        var userManager = BuildUserManager();
+        userManager.Setup(x => x.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager
+            .Setup(x => x.ChangePasswordAsync(user, "WrongPass@123", "NewPass@123"))
+            .ReturnsAsync(
+                IdentityResult.Failed(
+                    new IdentityError { Description = "Incorrect password" }
+                )
+            );
+        var refreshTokenService = new Mock<IRefreshTokenService>();
+        var service = CreateService(
+            userManager,
+            new Mock<IEmailService>(),
+            refreshTokenService
+        );
+
+        var result = await service.ChangePasswordAsync(
+            user.Id,
+            "WrongPass@123",
+            "NewPass@123"
+        );
+
+        Assert.False(result.IsSuccessfull);
+        refreshTokenService.Verify(
+            x => x.InvalidateAllUserSessionsAsync(It.IsAny<string>()),
+            Times.Never
         );
     }
 }

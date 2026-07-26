@@ -23,6 +23,7 @@ public class GenerateToken
             new Claim(JwtRegisteredClaimNames.UniqueName, user.UserName ?? "Avel"),
             new Claim(JwtRegisteredClaimNames.Picture, user.AvatarUrl ?? ""),
             new Claim("IsEmailConfirmed", user.EmailConfirmed.ToString()),
+            new Claim("token_version", user.TokenVersion.ToString()),
         };
         var creds = new SigningCredentials(
             new SymmetricSecurityKey(key),

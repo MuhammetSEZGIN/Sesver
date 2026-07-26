@@ -29,6 +29,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Gateway oturum sürümü doğrulaması için IdentityService ile paylaşılan Redis.
+  session-redis:
+    image: redis:7-alpine
+    container_name: session_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - session_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # 1. PostgreSQL - Clan Service İçin
   clanservice-db:
     image: postgres:latest
@@ -186,8 +203,11 @@ services:
       Smtp__Password: "${SMTP_PASSWORD}"
       ClientApp__PasswordResetUrl: "${PASSWORD_RESET_URL}"
       ClientApp__EmailConfirmationUrl: "${EMAIL_CONFIRMATION_URL}"
+      Redis__ConnectionString: "session-redis:6379,abortConnect=false"
     depends_on:
       identity-db:
+        condition: service_healthy
+      session-redis:
         condition: service_healthy
 
   # 8. MessageService
@@ -344,6 +364,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       AuthService__BaseUrl: "http://authenticationservice:8081"
+      Redis__ConnectionString: "session-redis:6379,abortConnect=false"
       JWT__Key: "${JWT_KEY}"
       JWT__Issuer: "${JWT_ISSUER}"
       JWT__Audience: "${JWT_AUDIENCE}"
@@ -352,12 +373,20 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - identityservice
-      - messageservice
-      - clanservice
-      - voiceservice
-      - versioncontrolservice
-      - notificationservice
+      identityservice:
+        condition: service_started
+      messageservice:
+        condition: service_started
+      clanservice:
+        condition: service_started
+      voiceservice:
+        condition: service_started
+      versioncontrolservice:
+        condition: service_started
+      notificationservice:
+        condition: service_started
+      session-redis:
+        condition: service_healthy
 
   # 12. Nginx Reverse Proxy (SSL + WebSocket)
   nginx:
@@ -395,6 +424,7 @@ volumes:
   message_mongo_data:
   versioncontrol_data:
   auth_postgres_data:
+  session_redis_data:
   certbot_www:
   certbot_conf:
     external: true

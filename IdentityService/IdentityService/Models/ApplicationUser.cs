@@ -10,5 +10,8 @@ public class ApplicationUser : IdentityUser
 
     [MaxLength(190)]
     public string Bio { get; set; }
+
+    public int TokenVersion { get; set; }
+
     public virtual ICollection<UserRefreshToken> RefreshTokens { get; set; }
 }

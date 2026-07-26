@@ -377,12 +377,17 @@ public class EmailService : IEmailService
                 return InvalidResetRequest();
             }
 
-            var revoked = await _refreshTokenService.RevokeAllUserTokensAsync(user.Id);
-            if (!revoked)
+            var invalidated = await _refreshTokenService.InvalidateAllUserSessionsAsync(user.Id);
+            if (!invalidated)
             {
-                _logger.LogWarning(
-                    "Password reset succeeded but refresh token revocation failed for user {UserId}.",
+                _logger.LogCritical(
+                    "Password reset succeeded but sessions could not be invalidated for user {UserId}.",
                     user.Id
+                );
+                return ApiResponse<object>.Failed(
+                    "Password was reset, but active sessions could not be closed.",
+                    null,
+                    (int)HttpStatusCode.InternalServerError
                 );
             }
 

@@ -26,7 +26,6 @@ namespace IdentityServiceTests.UnitTests.Controllers
             _mockAuthService = new Mock<IAuthService>();
             _mockEmailService = new Mock<IEmailService>();
             _mockRegisterService = new Mock<IRegisterService>();
-
             _controller = new AuthController(
                 _mockAuthService.Object,
                 _mockEmailService.Object,

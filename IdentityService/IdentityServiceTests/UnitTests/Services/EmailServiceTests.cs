@@ -111,7 +111,7 @@ public class EmailServiceTests
             .ReturnsAsync(IdentityResult.Success);
         var refreshTokenService = new Mock<IRefreshTokenService>();
         refreshTokenService
-            .Setup(x => x.RevokeAllUserTokensAsync(user.Id))
+            .Setup(x => x.InvalidateAllUserSessionsAsync(user.Id))
             .ReturnsAsync(true);
         var service = CreateService(userManager, refreshTokenService);
 
@@ -131,7 +131,10 @@ public class EmailServiceTests
             x => x.ResetPasswordAsync(user, identityToken, "NewPass@123"),
             Times.Once
         );
-        refreshTokenService.Verify(x => x.RevokeAllUserTokensAsync(user.Id), Times.Once);
+        refreshTokenService.Verify(
+            x => x.InvalidateAllUserSessionsAsync(user.Id),
+            Times.Once
+        );
     }
 
     [Fact]
@@ -164,7 +167,7 @@ public class EmailServiceTests
             Times.Never
         );
         refreshTokenService.Verify(
-            x => x.RevokeAllUserTokensAsync(It.IsAny<string>()),
+            x => x.InvalidateAllUserSessionsAsync(It.IsAny<string>()),
             Times.Never
         );
     }

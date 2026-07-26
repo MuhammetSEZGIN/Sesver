@@ -42,11 +42,30 @@ namespace IdentityServiceTests.UnitTests.Services
                 store.Object, null, null, null, null, null, null, null, null);
         }
 
-        private RefreshTokenService CreateService(IdentityDbContext context)
+        private static Mock<ITokenVersionStore> BuildTokenVersionStore()
+        {
+            var store = new Mock<ITokenVersionStore>();
+            store.Setup(x => x.SetAtLeastAsync(It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync(true);
+            store.Setup(x => x.IncrementAsync(It.IsAny<string>(), It.IsAny<int>()))
+                .ReturnsAsync((string _, int databaseVersion) => databaseVersion + 1);
+            return store;
+        }
+
+        private RefreshTokenService CreateService(
+            IdentityDbContext context,
+            Mock<ITokenVersionStore> tokenVersionStore = null
+        )
         {
             var logger = new Mock<ILogger<RefreshTokenService>>();
             var userManager = BuildUserManager();
-            return new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            return new RefreshTokenService(
+                BuildConfig(),
+                context,
+                userManager.Object,
+                logger.Object,
+                (tokenVersionStore ?? BuildTokenVersionStore()).Object
+            );
         }
 
         [Fact]
@@ -61,7 +80,10 @@ namespace IdentityServiceTests.UnitTests.Services
             userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync(user);
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             var result = await service.CreateUserRefreshTokenAsync("u1", "DeviceA", "127.0.0.1");
 
@@ -73,6 +95,35 @@ namespace IdentityServiceTests.UnitTests.Services
         }
 
         [Fact]
+        public async Task CreateUserRefreshTokenAsync_Returns503_WhenTokenVersionStoreUnavailable()
+        {
+            var context = BuildContext(
+                nameof(CreateUserRefreshTokenAsync_Returns503_WhenTokenVersionStoreUnavailable)
+            );
+            var user = new ApplicationUser { Id = "u1", UserName = "john" };
+            context.Users.Add(user);
+            await context.SaveChangesAsync();
+
+            var userManager = BuildUserManager();
+            userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync(user);
+            var tokenVersionStore = BuildTokenVersionStore();
+            tokenVersionStore.Setup(x => x.SetAtLeastAsync("u1", 0)).ReturnsAsync(false);
+            var logger = new Mock<ILogger<RefreshTokenService>>();
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                tokenVersionStore.Object
+            );
+
+            var result = await service.CreateUserRefreshTokenAsync(
+                "u1", "DeviceA", "127.0.0.1"
+            );
+
+            Assert.False(result.IsSuccessfull);
+            Assert.Equal((int)System.Net.HttpStatusCode.ServiceUnavailable, result.StatusCode);
+            Assert.Empty(context.UserRefreshTokens);
+        }
+
+        [Fact]
         public async Task CreateUserRefreshTokenAsync_Fails_WhenUserNotFound()
         {
             var context = BuildContext(nameof(CreateUserRefreshTokenAsync_Fails_WhenUserNotFound));
@@ -80,7 +131,10 @@ namespace IdentityServiceTests.UnitTests.Services
             userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync((ApplicationUser)null);
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             var result = await service.CreateUserRefreshTokenAsync("u1", "DeviceA", "127.0.0.1");
 
@@ -113,7 +167,10 @@ namespace IdentityServiceTests.UnitTests.Services
             userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync(user);
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             var result = await service.CreateUserRefreshTokenAsync("u1", "DeviceB", "127.0.0.1");
 
@@ -149,7 +206,10 @@ namespace IdentityServiceTests.UnitTests.Services
             userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync(user);
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             // Creating 6th token should remove the oldest (s5)
             var result = await service.CreateUserRefreshTokenAsync("u1", "Device6", "127.0.0.1");
@@ -186,7 +246,10 @@ namespace IdentityServiceTests.UnitTests.Services
             userManager.Setup(x => x.FindByIdAsync("u1")).ReturnsAsync(user);
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             // Creating new token for SameDevice should remove the old one for that device
             var result = await service.CreateUserRefreshTokenAsync("u1", "SameDevice", "127.0.0.1");
@@ -357,6 +420,86 @@ namespace IdentityServiceTests.UnitTests.Services
         }
 
         [Fact]
+        public async Task InvalidateAllUserSessionsAsync_IncrementsVersionAndRemovesTokens()
+        {
+            var context = BuildContext(
+                nameof(InvalidateAllUserSessionsAsync_IncrementsVersionAndRemovesTokens)
+            );
+            context.Users.AddRange(
+                new ApplicationUser { Id = "u1", UserName = "john", TokenVersion = 3 },
+                new ApplicationUser { Id = "u2", UserName = "jane", TokenVersion = 1 }
+            );
+            context.UserRefreshTokens.AddRange(
+                new UserRefreshToken
+                {
+                    Id = "s1",
+                    UserId = "u1",
+                    RefreshToken = "token1",
+                    RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1),
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedByIp = "ip",
+                    DeviceInfo = "d1"
+                },
+                new UserRefreshToken
+                {
+                    Id = "s2",
+                    UserId = "u2",
+                    RefreshToken = "token2",
+                    RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1),
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedByIp = "ip",
+                    DeviceInfo = "d2"
+                }
+            );
+            await context.SaveChangesAsync();
+            var tokenVersionStore = BuildTokenVersionStore();
+            var service = CreateService(context, tokenVersionStore);
+
+            var result = await service.InvalidateAllUserSessionsAsync("u1");
+
+            Assert.True(result);
+            Assert.Equal(4, (await context.Users.FindAsync("u1"))!.TokenVersion);
+            Assert.DoesNotContain(context.UserRefreshTokens, token => token.UserId == "u1");
+            Assert.Contains(context.UserRefreshTokens, token => token.UserId == "u2");
+            tokenVersionStore.Verify(x => x.IncrementAsync("u1", 3), Times.Once);
+        }
+
+        [Fact]
+        public async Task InvalidateAllUserSessionsAsync_DoesNotChangeDatabase_WhenRedisUnavailable()
+        {
+            var context = BuildContext(
+                nameof(InvalidateAllUserSessionsAsync_DoesNotChangeDatabase_WhenRedisUnavailable)
+            );
+            context.Users.Add(
+                new ApplicationUser { Id = "u1", UserName = "john", TokenVersion = 3 }
+            );
+            context.UserRefreshTokens.Add(
+                new UserRefreshToken
+                {
+                    Id = "s1",
+                    UserId = "u1",
+                    RefreshToken = "token1",
+                    RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1),
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedByIp = "ip",
+                    DeviceInfo = "d1"
+                }
+            );
+            await context.SaveChangesAsync();
+
+            var tokenVersionStore = BuildTokenVersionStore();
+            tokenVersionStore.Setup(x => x.IncrementAsync("u1", 3))
+                .ReturnsAsync((int?)null);
+            var service = CreateService(context, tokenVersionStore);
+
+            var result = await service.InvalidateAllUserSessionsAsync("u1");
+
+            Assert.False(result);
+            Assert.Equal(3, (await context.Users.FindAsync("u1"))!.TokenVersion);
+            Assert.Single(context.UserRefreshTokens);
+        }
+
+        [Fact]
         public async Task CleanupExpiredTokensAsync_RemovesOnlyExpiredTokens()
         {
             var context = BuildContext(nameof(CleanupExpiredTokensAsync_RemovesOnlyExpiredTokens));
@@ -435,7 +578,10 @@ namespace IdentityServiceTests.UnitTests.Services
                 .ThrowsAsync(new Exception("boom"));
 
             var logger = new Mock<ILogger<RefreshTokenService>>();
-            var service = new RefreshTokenService(BuildConfig(), context, userManager.Object, logger.Object);
+            var service = new RefreshTokenService(
+                BuildConfig(), context, userManager.Object, logger.Object,
+                BuildTokenVersionStore().Object
+            );
 
             var result = await service.CreateUserRefreshTokenAsync("u1", "DeviceA", "127.0.0.1");
 

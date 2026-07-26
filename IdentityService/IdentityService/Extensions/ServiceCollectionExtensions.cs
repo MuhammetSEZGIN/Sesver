@@ -7,6 +7,7 @@ using IdentityService.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Filters;
+using StackExchange.Redis;
 
 namespace IdentityService.Extensions
 {
@@ -56,7 +57,21 @@ namespace IdentityService.Extensions
             services.AddScoped<IRegisterService, RegisterService>();
             services.AddScoped<IUserService, UserService>();
             services.AddScoped<IFriendshipService, FriendshipService>();
+            services.AddScoped<ITokenVersionStore, RedisTokenVersionStore>();
 
+            return services;
+        }
+
+        public static IServiceCollection AddTokenVersionRedis(
+            this IServiceCollection services,
+            IConfiguration configuration
+        )
+        {
+            var connectionString = configuration["Redis:ConnectionString"]
+                ?? "localhost:6379,abortConnect=false";
+            services.AddSingleton<IConnectionMultiplexer>(
+                _ => ConnectionMultiplexer.Connect(connectionString)
+            );
             return services;
         }
     }

@@ -2,10 +2,13 @@ using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ApiGateway.Handlers;
+using ApiGateway.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Ocelot.DependencyInjection;
 using Ocelot.Middleware;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -94,11 +97,22 @@ builder.Services.AddHttpClient("AuthService", client =>
     client.BaseAddress = new Uri(authServiceBaseUrl);
 });
 
+var redisConnectionString = builder.Configuration["Redis:ConnectionString"]
+    ?? (builder.Environment.IsEnvironment("Docker")
+        ? "session-redis:6379,abortConnect=false"
+        : "localhost:6379,abortConnect=false");
+builder.Services.AddSingleton<IConnectionMultiplexer>(
+    _ => ConnectionMultiplexer.Connect(redisConnectionString)
+);
+builder.Services.AddSingleton<IGatewayTokenVersionStore, RedisGatewayTokenVersionStore>();
+
 // 1. Önce yazdığımız Handler'ı sisteme (DI Container) tanıtıyoruz
 //builder.Services.AddTransient<ApiGateway.Handlers.ClanRoleEnrichmentHandler>();
 
 // 2. Sonra Ocelot'a bu Handler'ı kullanmasını söylüyoruz!
-builder.Services.AddOcelot(builder.Configuration);
+builder.Services
+    .AddOcelot(builder.Configuration)
+    .AddDelegatingHandler<RemoveDownstreamAuthorizationHandler>(true);
            
 var app = builder.Build();
 
@@ -110,6 +124,8 @@ app.Use(async (context, next) =>
     context.Request.Headers.Remove("X-User-Id");
     context.Request.Headers.Remove("X-User-Name");
     context.Request.Headers.Remove("X-User-Avatar");
+    context.Request.Headers.Remove("X-Clan-Role");
+    context.Request.Headers.Remove("X-Token-Version");
     await next();
 });
 
@@ -138,6 +154,73 @@ app.Use(async (context, next) =>
 });
 
 app.UseAuthentication();
+
+// Parola değişince IdentityService Redis'teki sürümü artırır; Gateway eski
+// sürümlü access token'ları ek bir servis/DB isteği yapmadan burada reddeder.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated != true)
+    {
+        await next();
+        return;
+    }
+
+    var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? context.User.FindFirst("sub")?.Value;
+    var tokenVersionValue = context.User.FindFirst("token_version")?.Value;
+
+    if (
+        string.IsNullOrWhiteSpace(userId)
+        || !int.TryParse(tokenVersionValue, out var tokenVersion)
+    )
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Session is no longer valid. Please sign in again."
+        });
+        return;
+    }
+
+    try
+    {
+        var tokenVersionStore = context.RequestServices
+            .GetRequiredService<IGatewayTokenVersionStore>();
+        var currentVersion = await tokenVersionStore.GetAsync(userId);
+
+        if (!currentVersion.HasValue)
+        {
+            context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "Session validation is temporarily unavailable."
+            });
+            return;
+        }
+
+        if (currentVersion.Value != tokenVersion)
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                message = "Session is no longer valid. Please sign in again."
+            });
+            return;
+        }
+    }
+    catch (RedisException)
+    {
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "Session validation is temporarily unavailable."
+        });
+        return;
+    }
+
+    await next();
+});
+
 app.UseAuthorization();
 
 app.Use(

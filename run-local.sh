@@ -70,7 +70,7 @@ check_local_infrastructure() {
     exit 1
   fi
 
-  local required=(identity-db clan-db notification-db message-db rabbitmq)
+  local required=(identity-db clan-db notification-db message-db rabbitmq redis)
   if [[ "$RUN_AUTH" == true ]]; then
     required+=(auth-db auth-redis)
   fi
@@ -145,7 +145,8 @@ start_dotnet "identityservice" "IdentityService/IdentityService/IdentityService.
   "Smtp__Port=$LOCAL_SMTP_PORT" "Smtp__FromName=$LOCAL_SMTP_FROM_NAME" \
   "Smtp__FromAddress=$LOCAL_SMTP_FROM_ADDRESS" "Smtp__Username=$LOCAL_SMTP_USERNAME" \
   "Smtp__Password=$LOCAL_SMTP_PASSWORD" "ClientApp__PasswordResetUrl=$LOCAL_PASSWORD_RESET_URL" \
-  "ClientApp__EmailConfirmationUrl=$LOCAL_EMAIL_CONFIRMATION_URL"
+  "ClientApp__EmailConfirmationUrl=$LOCAL_EMAIL_CONFIRMATION_URL" \
+  "Redis__ConnectionString=localhost:6379,abortConnect=false"
 
 start_dotnet "clanservice" "ClanService/ClanService/ClanService.csproj" "http://localhost:5074" \
   "ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=ClanDb;Username=admin;Password=admin123" \
@@ -196,7 +197,8 @@ echo "Waiting for downstream services before starting the gateway..."
 sleep 5
 start_dotnet "apigateway" "ApiGateway/ApiGateway.csproj" "http://localhost:5000" \
   "Jwt__Key=$LOCAL_JWT_KEY" "Jwt__Issuer=$LOCAL_JWT_ISSUER" "Jwt__Audience=$LOCAL_JWT_AUDIENCE" \
-  "AuthService__BaseUrl=http://localhost:8081"
+  "AuthService__BaseUrl=http://localhost:8081" \
+  "Redis__ConnectionString=localhost:6379,abortConnect=false"
 
 if [[ "$RUN_VOICE" == true ]]; then
   echo "Starting voiceservice..."

@@ -15,5 +15,6 @@ public interface IRefreshTokenService
     Task<UserRefreshToken> GetValidRefreshTokenAsync(string refreshToken);
     Task<bool> RevokeRefreshTokenAsync(string refreshToken);
     Task<bool> RevokeAllUserTokensAsync(string userId);
+    Task<bool> InvalidateAllUserSessionsAsync(string userId);
     Task CleanupExpiredTokensAsync();
 }

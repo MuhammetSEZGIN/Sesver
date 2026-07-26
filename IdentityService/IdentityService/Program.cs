@@ -28,6 +28,7 @@ builder.Services.AddDatabaseConfiguration(builder.Configuration, logger);
 builder.Services.AddIdentityConfiguration();
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddApplicationServices();
+builder.Services.AddTokenVersionRedis(builder.Configuration);
 
 
 

@@ -119,8 +119,11 @@ services:
     image: redis:7-alpine
     container_name: sesver-local-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
+    volumes:
+      - sesver_local_session_redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -160,4 +163,5 @@ volumes:
   sesver_local_clan_db:
   sesver_local_auth_db:
   sesver_local_message_db:
+  sesver_local_session_redis:
   sesver_local_livekit_redis:

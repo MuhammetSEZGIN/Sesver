@@ -89,8 +89,8 @@ public class AuthService : IAuthService
                 );
                 return ApiResponse<AuthResponseDto>.Failed(
                     "Login successful but failed to update refresh token",
-                    null,
-                    (int)HttpStatusCode.InternalServerError
+                    refreshTokenResult.Errors,
+                    refreshTokenResult.StatusCode
                 );
             }
             var authResponse = new AuthResponseDto
