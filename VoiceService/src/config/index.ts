@@ -13,6 +13,7 @@ interface Config {
     apiSecret: string;
     url: string;
   };
+  messageServiceUrl: string;
 }
 
 function requireEnv(name: string): string {
@@ -35,6 +36,7 @@ const config: Config = {
     apiSecret: requireEnv("LIVEKIT_API_SECRET"),
     url: requireEnv("LIVEKIT_URL"),
   },
+  messageServiceUrl: process.env.MESSAGE_SERVICE_URL ?? "http://localhost:5107",
 };
 
 export default config;

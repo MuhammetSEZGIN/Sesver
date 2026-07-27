@@ -58,6 +58,16 @@ namespace ClanService.Services
                     Role = ClanRole.OWNER.ToString(),
                     EventType = ClanRoleEventType.ASSIGN_ROLE.ToString()
                 });
+                await _clanMessageProducer.PublishClanMembershipChangedMessageAsync(new ClanMembershipChangedMessage
+                {
+                    MembershipId = clanMembership.Id,
+                    ClanId = clan.ClanId.ToString(),
+                    UserId = userId,
+                    UserName = user.Username,
+                    AvatarUrl = user.AvatarUrl,
+                    Role = clanMembership.Role,
+                    ChangeType = ClanMembershipChangeType.Joined
+                });
                 return (clan, "Clan created successfully");
             }
             catch (Exception e)

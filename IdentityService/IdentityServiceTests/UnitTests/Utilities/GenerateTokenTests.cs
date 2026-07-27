@@ -2,6 +2,7 @@ using Xunit;
 using IdentityService.Utilities;
 using IdentityService.Models;
 using Microsoft.Extensions.Configuration;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace IdentityServiceTests.UnitTests.Utilities; 
 public class GenerateTokenTests
@@ -23,10 +24,13 @@ public class GenerateTokenTests
             Id = "user-123",
             UserName = "testuser",
             EmailConfirmed = true,
-            AvatarUrl = "https://example.com/avatar.png"
+            AvatarUrl = "https://example.com/avatar.png",
+            TokenVersion = 7
         };
         var token = GenerateToken.GenerateJSONWebToken(testUser, config);
         Assert.NotNull(token);
         Assert.True(token.Length > 0);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        Assert.Equal("7", jwt.Claims.Single(claim => claim.Type == "token_version").Value);
     }
 }

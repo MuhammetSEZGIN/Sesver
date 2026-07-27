@@ -1,7 +1,9 @@
 port: 7880
 rtc:
-  port_range_start: 50000
-  port_range_end: 60000
+  # docker-compose.yml tek UDP medya portu olarak 7882'yi yayımlar.
+  # Buradaki aday ile host portu aynı olmazsa istemciler sinyalleşir fakat
+  # medya için ICE bağlantısı kuramaz.
+  udp_port: 7882
   use_external_ip: true
   tcp_port: 7881
 

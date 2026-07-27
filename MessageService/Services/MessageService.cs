@@ -61,16 +61,41 @@ public class MessageService : IMessageService
         }
     }
 
-    public async Task<ServiceResult<bool>> DeleteMessageAsync(ObjectId messageId)
+    public async Task<ServiceResult<bool>> DeleteMessageAsync(
+        ObjectId messageId,
+        string requesterId,
+        string expectedClanId
+    )
     {
         try
         {
-            
+
             if (messageId == ObjectId.Empty)
             {
                 _logger.LogWarning("Attempted to delete message with empty ID");
                 return ServiceResult<bool>.BadRequest("Message ID cannot be empty");
             }
+
+            var existing = await _messageRepository.GetByIdAsync(messageId);
+            if (existing == null)
+            {
+                return ServiceResult<bool>.NotFound("Message not found");
+            }
+            if (!string.Equals(existing.ClanId, expectedClanId, StringComparison.OrdinalIgnoreCase))
+            {
+                return ServiceResult<bool>.Forbidden("Message does not belong to this clan");
+            }
+            if (existing.SenderId != requesterId)
+            {
+                _logger.LogWarning(
+                    "User {RequesterId} attempted to delete message {MessageId} owned by {SenderId}",
+                    requesterId,
+                    messageId,
+                    existing.SenderId
+                );
+                return ServiceResult<bool>.Forbidden("You can only delete your own messages");
+            }
+
             var result = await _messageRepository.DeleteMessagesByMessageId(messageId);
             if (!result)
             {
@@ -94,7 +119,12 @@ public class MessageService : IMessageService
 
     }
 
-    public async Task<ServiceResult<IEnumerable<MessageDto>>> GetMessagesInChannelAsync(string channelId, int limit, int page)
+    public async Task<ServiceResult<IEnumerable<MessageDto>>> GetMessagesInChannelAsync(
+        string channelId,
+        string clanId,
+        int limit,
+        int page
+    )
     {
         try
         {
@@ -108,7 +138,12 @@ public class MessageService : IMessageService
             if (limit > 100) limit = 100; // Prevent excessive queries
             if (page <= 0) page = 1;
 
-            var messages = await _messageRepository.GetMessagesInChannelAsync(channelId, limit, page);
+            var messages = await _messageRepository.GetMessagesInChannelAsync(
+                channelId,
+                clanId,
+                limit,
+                page
+            );
             _logger.LogInformation("Retrieved {MessageCount} messages for channel {ChannelId}", messages.Count(), channelId);
             return ServiceResult<IEnumerable<MessageDto>>.Success(messages, "Messages retrieved successfully");
         }
@@ -119,7 +154,12 @@ public class MessageService : IMessageService
         }
     }
 
-    public async Task<ServiceResult<Message>> UpdateMessage(ObjectId messageId, string newContent)
+    public async Task<ServiceResult<Message>> UpdateMessage(
+        ObjectId messageId,
+        string newContent,
+        string requesterId,
+        string expectedClanId
+    )
     {
         try
         {
@@ -140,6 +180,22 @@ public class MessageService : IMessageService
             {
                 _logger.LogWarning("Message {MessageId} not found for update", messageId);
                 return ServiceResult<Message>.NotFound("Message not found");
+            }
+
+            if (!string.Equals(message.ClanId, expectedClanId, StringComparison.OrdinalIgnoreCase))
+            {
+                return ServiceResult<Message>.Forbidden("Message does not belong to this clan");
+            }
+
+            if (message.SenderId != requesterId)
+            {
+                _logger.LogWarning(
+                    "User {RequesterId} attempted to update message {MessageId} owned by {SenderId}",
+                    requesterId,
+                    messageId,
+                    message.SenderId
+                );
+                return ServiceResult<Message>.Forbidden("You can only edit your own messages");
             }
 
             message.Text = newContent;

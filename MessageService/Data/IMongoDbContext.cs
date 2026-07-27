@@ -9,6 +9,7 @@ public interface IMongoDbContext
 
     IMongoCollection<User> Users { get; }
     IMongoCollection<Message> Messages { get; }
+    IMongoCollection<DmConversation> DmConversations { get; }
     // Genel koleksiyon alma metodu
     IMongoCollection<T> GetCollection<T>(string name);
 }

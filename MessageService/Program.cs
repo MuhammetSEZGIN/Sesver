@@ -27,6 +27,8 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddScoped<IMessageService, MessageService.Services.MessageService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IDmConversationService, DmConversationService>();
+builder.Services.AddSingleton<IMessageConnectionTracker, MessageConnectionTracker>();
 builder.Services.AddSingleton<IBackgroundTaskQueue>(
     provider=> new BackgroundTaskQueue(capacity:100)
 );
@@ -70,7 +72,21 @@ builder.Services.AddAuthentication("GatewayAuth")
             }
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("GatewayUser", policy =>
+    {
+        policy.AddAuthenticationSchemes("GatewayAuth");
+        policy.RequireAuthenticatedUser();
+    });
+    options.AddPolicy("GatewayClanMember", policy =>
+    {
+        policy.AddAuthenticationSchemes("GatewayAuth");
+        policy.RequireAuthenticatedUser();
+        policy.RequireClaim("clan_id");
+        policy.RequireRole("OWNER", "ADMIN", "MEMBER");
+    });
+});
 
 builder.Services.AddControllers();
 builder.Services.AddSignalR();
@@ -131,6 +147,11 @@ app.UseAuthentication();
 
 app.UseRateLimiter();
 app.UseAuthorization();
-app.MapHub<MessageHub>("/messagehub").RequireCors("AllowTauri");
+app.MapHub<MessageHub>("/messagehub")
+    .RequireAuthorization("GatewayUser")
+    .RequireCors("AllowTauri");
+app.MapHub<MessageHub>("/messagehub/clanId/{clanId:guid}")
+    .RequireAuthorization("GatewayClanMember")
+    .RequireCors("AllowTauri");
 app.MapControllers();
 app.Run();

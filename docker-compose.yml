@@ -29,6 +29,23 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # Gateway oturum sürümü doğrulaması için IdentityService ile paylaşılan Redis.
+  session-redis:
+    image: redis:7-alpine
+    container_name: session_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    expose:
+      - "6379"
+    volumes:
+      - session_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   # 1. PostgreSQL - Clan Service İçin
   clanservice-db:
     image: postgres:latest
@@ -64,6 +81,24 @@ services:
       - identity_pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${IDENTITY_DB_USER} -d ${IDENTITY_DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  notification-db:
+    image: postgres:18-alpine
+    container_name: notification-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${NOTIFICATION_DB_USER}
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+    expose:
+      - "5432"
+    volumes:
+      - notification_pg_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${NOTIFICATION_DB_USER} -d ${NOTIFICATION_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -153,14 +188,26 @@ services:
       Jwt__Key: "${JWT_KEY}"
       Jwt__Issuer: "${JWT_ISSUER}"
       Jwt__Audience: "${JWT_AUDIENCE}"
-      RabbitMq__Host: "${RABBITMQ_HOST}"
+      RabbitMq__HostName: "${RABBITMQ_HOST}"
       RabbitMq__VirtualHost: "${RABBITMQ_VHOST}"
       RabbitMq__Port: "${RABBITMQ_PORT}"
       RabbitMq__UserName: "${RABBITMQ_USER}"
       RabbitMq__Password: "${RABBITMQ_PASSWORD}"
       RabbitMq__QueueName: "${RABBITMQ_QUEUE}"
+      Smtp__Enabled: "${SMTP_ENABLED}"
+      Smtp__Host: "${SMTP_HOST}"
+      Smtp__Port: "${SMTP_PORT}"
+      Smtp__FromName: "${SMTP_FROM_NAME}"
+      Smtp__FromAddress: "${SMTP_FROM_ADDRESS}"
+      Smtp__Username: "${SMTP_USERNAME}"
+      Smtp__Password: "${SMTP_PASSWORD}"
+      ClientApp__PasswordResetUrl: "${PASSWORD_RESET_URL}"
+      ClientApp__EmailConfirmationUrl: "${EMAIL_CONFIRMATION_URL}"
+      Redis__ConnectionString: "session-redis:6379,abortConnect=false"
     depends_on:
       identity-db:
+        condition: service_healthy
+      session-redis:
         condition: service_healthy
 
   # 8. MessageService
@@ -211,8 +258,35 @@ services:
       RabbitMQ__Port: "${RABBITMQ_PORT}"
       RabbitMQ__UserName: "${RABBITMQ_USER}"
       RabbitMQ__Password: "${RABBITMQ_PASSWORD}"
+      Services__IdentityBaseUrl: "http://identityservice:80"
+      Services__MessageBaseUrl: "http://messageservice:80"
     expose:
       - "80"
+
+  notificationservice:
+    build:
+      context: .
+      dockerfile: NotificationService/Dockerfile
+    container_name: notificationservice
+    restart: always
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=notification-db;Port=5432;Database=${NOTIFICATION_DB_NAME};Username=${NOTIFICATION_DB_USER};Password=${NOTIFICATION_DB_PASSWORD}"
+      Jwt__Key: "${JWT_KEY}"
+      Jwt__Issuer: "${JWT_ISSUER}"
+      Jwt__Audience: "${JWT_AUDIENCE}"
+      Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
+      Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      RabbitMQ__HostName: "${RABBITMQ_HOST}"
+      RabbitMQ__VirtualHost: "${RABBITMQ_VHOST}"
+      RabbitMQ__Port: "${RABBITMQ_PORT}"
+      RabbitMQ__UserName: "${RABBITMQ_USER}"
+      RabbitMQ__Password: "${RABBITMQ_PASSWORD}"
+    expose:
+      - "80"
+    depends_on:
+      notification-db:
+        condition: service_healthy
 
   # 10. VoiceService
   voiceservice:
@@ -230,8 +304,10 @@ services:
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET}"
       LIVEKIT_URL: "http://livekit-server:7880"
+      MESSAGE_SERVICE_URL: "http://messageservice:80"
     depends_on:
       - livekit-server
+      - messageservice
   authenticationservice:
     build:
       context: AuthenticationService
@@ -288,6 +364,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       AuthService__BaseUrl: "http://authenticationservice:8081"
+      Redis__ConnectionString: "session-redis:6379,abortConnect=false"
       JWT__Key: "${JWT_KEY}"
       JWT__Issuer: "${JWT_ISSUER}"
       JWT__Audience: "${JWT_AUDIENCE}"
@@ -296,11 +373,20 @@ services:
     ports:
       - "5000:5000"
     depends_on:
-      - identityservice
-      - messageservice
-      - clanservice
-      - voiceservice
-      - versioncontrolservice
+      identityservice:
+        condition: service_started
+      messageservice:
+        condition: service_started
+      clanservice:
+        condition: service_started
+      voiceservice:
+        condition: service_started
+      versioncontrolservice:
+        condition: service_started
+      notificationservice:
+        condition: service_started
+      session-redis:
+        condition: service_healthy
 
   # 12. Nginx Reverse Proxy (SSL + WebSocket)
   nginx:
@@ -320,6 +406,7 @@ services:
       - apigateway
       - messageservice
       - presenceservice
+      - notificationservice
 
   # 13. Certbot (Let's Encrypt SSL)
   certbot:
@@ -333,9 +420,11 @@ services:
 volumes:
   clan_pg_data:
   identity_pg_data:
+  notification_pg_data:
   message_mongo_data:
   versioncontrol_data:
   auth_postgres_data:
+  session_redis_data:
   certbot_www:
   certbot_conf:
     external: true

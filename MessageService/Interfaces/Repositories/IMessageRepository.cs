@@ -7,9 +7,10 @@ namespace MessageService.Interfaces.Repositories.IUserRepository;
 
 public interface IMessageRepository : IRepository<Message, ObjectId>
 {
-    Task<IEnumerable<MessageDto>> GetMessagesInChannelAsync(string channelId, int limit, int page);
-    Task<IEnumerable<MessageDto>> SearchInChannelAsync(string channelId, string searchText, int limit, int page);
+    Task<IEnumerable<MessageDto>> GetMessagesInChannelAsync(string channelId, string clanId, int limit, int page);
+    Task<IEnumerable<MessageDto>> SearchInChannelAsync(string channelId, string clanId, string searchText, int limit, int page);
     Task<bool> DeleteMessagesOfChannelByChannelId(string channelId);
     Task<bool> DeleteMessagesByMessageId(ObjectId messageId);
     Task<bool> DeleteMessagesByClanId(string clanId);
+    Task<Dictionary<string, Message>> GetLastMessagesByChannelIdsAsync(IEnumerable<string> channelIds);
 }

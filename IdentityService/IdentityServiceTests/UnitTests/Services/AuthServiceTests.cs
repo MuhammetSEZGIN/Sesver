@@ -95,6 +95,7 @@ namespace IdentityServiceTests.UnitTests.Services
             Assert.True(result.IsSuccessfull);
             Assert.Equal("u1", result.Data.UserID);
             Assert.False(string.IsNullOrWhiteSpace(result.Data.AccessToken));
+            Assert.Equal("new-refresh", result.Data.RefreshToken);
             refreshService.Verify(x => x.CreateUserRefreshTokenAsync("u1", "DeviceA", "127.0.0.1"), Times.Once);
         }
 
@@ -376,7 +377,7 @@ namespace IdentityServiceTests.UnitTests.Services
                 new Mock<IRefreshTokenService>(),
                 new Mock<IIpAddressService>());
 
-            var result = await service.LogoutSessionAsync("s1");
+            var result = await service.LogoutSessionAsync("s1", "u1");
 
             Assert.True(result.IsSuccessfull);
             Assert.Equal((int)System.Net.HttpStatusCode.OK, result.StatusCode);
@@ -405,7 +406,7 @@ namespace IdentityServiceTests.UnitTests.Services
                 new Mock<IRefreshTokenService>(),
                 new Mock<IIpAddressService>());
 
-            var result = await service.LogoutSessionAsync("s1");
+            var result = await service.LogoutSessionAsync("s1", "u1");
 
             Assert.False(result.IsSuccessfull);
             Assert.Equal((int)System.Net.HttpStatusCode.BadRequest, result.StatusCode);
@@ -422,11 +423,40 @@ namespace IdentityServiceTests.UnitTests.Services
                 new Mock<IRefreshTokenService>(),
                 new Mock<IIpAddressService>());
 
-            var result = await service.LogoutSessionAsync("missing");
+            var result = await service.LogoutSessionAsync("missing", "u1");
 
             Assert.False(result.IsSuccessfull);
             Assert.Equal((int)System.Net.HttpStatusCode.NotFound, result.StatusCode);
             Assert.Equal("Session not found", result.Message);
+        }
+
+        [Fact]
+        public async Task LogoutSessionAsync_Fails_WhenSessionBelongsToAnotherUser()
+        {
+            var context = BuildContext(nameof(LogoutSessionAsync_Fails_WhenSessionBelongsToAnotherUser));
+            context.UserRefreshTokens.Add(new UserRefreshToken
+            {
+                Id = "s1",
+                UserId = "u1",
+                RefreshToken = "r1",
+                RefreshTokenExpiryTime = DateTime.UtcNow.AddDays(1),
+                CreatedAt = DateTime.UtcNow,
+                CreatedByIp = "ip",
+                DeviceInfo = "d"
+            });
+            await context.SaveChangesAsync();
+
+            var service = CreateService(
+                context,
+                BuildUserManager(),
+                new Mock<IRefreshTokenService>(),
+                new Mock<IIpAddressService>());
+
+            var result = await service.LogoutSessionAsync("s1", "someone-else");
+
+            Assert.False(result.IsSuccessfull);
+            Assert.Equal((int)System.Net.HttpStatusCode.NotFound, result.StatusCode);
+            Assert.NotNull(await context.UserRefreshTokens.FindAsync("s1"));
         }
     }
 }

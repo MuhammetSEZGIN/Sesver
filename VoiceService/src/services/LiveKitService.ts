@@ -1,4 +1,4 @@
-import { AccessToken } from "livekit-server-sdk";
+import { AccessToken, RoomServiceClient } from "livekit-server-sdk";
 import config from "../config";
 
 export interface ILiveKitService {
@@ -7,15 +7,25 @@ export interface ILiveKitService {
     userId: string,
     userName: string
   ): Promise<string>;
+  removeParticipant(roomId: string, userId: string): Promise<boolean>;
 }
 
 export class LiveKitService implements ILiveKitService {
   private readonly apiKey: string;
   private readonly apiSecret: string;
+  private readonly roomService: RoomServiceClient;
 
   constructor() {
     this.apiKey = config.livekit.apiKey;
     this.apiSecret = config.livekit.apiSecret;
+    const liveKitHttpUrl = config.livekit.url
+      .replace(/^ws:\/\//i, "http://")
+      .replace(/^wss:\/\//i, "https://");
+    this.roomService = new RoomServiceClient(
+      liveKitHttpUrl,
+      this.apiKey,
+      this.apiSecret
+    );
   }
 
   /**
@@ -48,5 +58,19 @@ export class LiveKitService implements ILiveKitService {
 
     const jwt = await token.toJwt();
     return jwt;
+  }
+
+  async removeParticipant(roomId: string, userId: string): Promise<boolean> {
+    if (!roomId || !userId) {
+      throw new Error("roomId and userId are required");
+    }
+
+    const participants = await this.roomService.listParticipants(roomId);
+    if (!participants.some((participant) => participant.identity === userId)) {
+      return false;
+    }
+
+    await this.roomService.removeParticipant(roomId, userId);
+    return true;
   }
 }

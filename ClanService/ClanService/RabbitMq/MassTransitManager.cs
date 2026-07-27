@@ -1,6 +1,7 @@
 using MassTransit;
 using System.Security.Authentication;
 using System.Text.Json;
+using Shared.Contracts;
 
 namespace ClanService.RabbitMq;
 
@@ -8,7 +9,7 @@ public static class MassTransitManager
 {
     public static IServiceCollection AddRabbitMQServices(this IServiceCollection services, IConfiguration configuration)
     {
-        var rabbitMqOptions = new RabbitMQOptions();
+        var rabbitMqOptions = new RabbitMqOptions();
         configuration.GetSection("RabbitMQ").Bind(rabbitMqOptions);
         services.AddMassTransit(x =>
                  {

@@ -29,6 +29,15 @@ namespace ClanService.Services
             if (clan == null)
                 return (null, "Clan not found");
             await _voiceChannelRepository.AddAsync(voiceChannel);
+            await _clanMessageProducer.PublishChannelUpsertedMessageAsync(new ChannelUpsertedMessage
+            {
+                ChannelId = voiceChannel.VoiceChannelId.ToString(),
+                ClanId = voiceChannel.ClanId.ToString(),
+                Name = voiceChannel.Name,
+                ChannelType = ChannelType.VoiceChannel,
+                IsActive = voiceChannel.IsActive,
+                MaxParticipants = voiceChannel.MaxParticipants
+            });
             return (voiceChannel, "VoiceChannel created successfully");
         }
 
@@ -46,6 +55,15 @@ namespace ClanService.Services
         public async Task<VoiceChannel> UpdateVoiceChannelAsync(VoiceChannel voiceChannel)
         {
             await _voiceChannelRepository.UpdateAsync(voiceChannel);
+            await _clanMessageProducer.PublishChannelUpsertedMessageAsync(new ChannelUpsertedMessage
+            {
+                ChannelId = voiceChannel.VoiceChannelId.ToString(),
+                ClanId = voiceChannel.ClanId.ToString(),
+                Name = voiceChannel.Name,
+                ChannelType = ChannelType.VoiceChannel,
+                IsActive = voiceChannel.IsActive,
+                MaxParticipants = voiceChannel.MaxParticipants
+            });
             return voiceChannel;
         }
 

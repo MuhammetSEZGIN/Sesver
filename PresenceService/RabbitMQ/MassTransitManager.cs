@@ -2,6 +2,7 @@ using System;
 using MassTransit;
 using System.Security.Authentication;
 using System.Text.Json;
+using Shared.Contracts;
 
 namespace PresenceService.RabbitMQ;
 
@@ -10,11 +11,12 @@ public static class MassTransitManager
 {
     public static IServiceCollection AddRabbitMQServices(this IServiceCollection services, IConfiguration configuration)
     {
-        var rabbitMqOptions = new RabbitMQOptions();
+        var rabbitMqOptions = new RabbitMqOptions();
         configuration.GetSection("RabbitMQ").Bind(rabbitMqOptions);
         services.AddMassTransit(x =>
                  {
                      x.AddConsumer<ClanServiceMessageConsumer>();
+                     x.AddConsumer<FriendshipRelationshipChangedConsumer>();
 
                      x.UsingRabbitMq((context, cfg) =>
                      {
@@ -37,6 +39,10 @@ public static class MassTransitManager
                         cfg.ReceiveEndpoint("Presence-Service-ClanUpdatedQueue", e =>
                         {
                             e.ConfigureConsumer<ClanServiceMessageConsumer>(context);
+                        });
+                        cfg.ReceiveEndpoint("Presence-Service-FriendshipChangedQueue", e =>
+                        {
+                            e.ConfigureConsumer<FriendshipRelationshipChangedConsumer>(context);
                         });
                      });
                  });

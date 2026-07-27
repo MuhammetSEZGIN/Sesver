@@ -89,15 +89,15 @@ public class AuthService : IAuthService
                 );
                 return ApiResponse<AuthResponseDto>.Failed(
                     "Login successful but failed to update refresh token",
-                    null,
-                    (int)HttpStatusCode.InternalServerError
+                    refreshTokenResult.Errors,
+                    refreshTokenResult.StatusCode
                 );
             }
             var authResponse = new AuthResponseDto
             {
                 UserID = user.Id,
                 AccessToken = token,
-                RefreshToken = refreshTokenResult.Data.ToString(),
+                RefreshToken = refreshTokenResult.Data.RefreshToken,
             };
             return ApiResponse<AuthResponseDto>.Success(authResponse, "Login successful");
         }
@@ -181,12 +181,12 @@ public class AuthService : IAuthService
         );
     }
 
-    public async Task<ApiResponse<string>> LogoutSessionAsync(string sessionId)
+    public async Task<ApiResponse<string>> LogoutSessionAsync(string sessionId, string userId)
     {
         try
         {
             var session = await _context.UserRefreshTokens.FindAsync(sessionId);
-            if (session == null)
+            if (session == null || session.UserId != userId)
             {
                 return ApiResponse<string>.Failed(
                     "Session not found",

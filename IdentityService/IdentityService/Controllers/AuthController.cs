@@ -5,6 +5,7 @@ using IdentityService.DTOs;
 using IdentityService.Examples;
 using IdentityService.Interfaces;
 using IdentityService.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Swashbuckle.AspNetCore.Filters;
 
@@ -17,16 +18,19 @@ namespace IdentityService.Controllers
         private readonly IAuthService _authService;
         private readonly IEmailService _emailService;
         private readonly IRegisterService _registerService;
+        private readonly IConfiguration _configuration;
 
         public AuthController(
             IAuthService authService,
             IEmailService emailService,
-            IRegisterService registerService
+            IRegisterService registerService,
+            IConfiguration configuration
         )
         {
             _authService = authService;
             _emailService = emailService;
             _registerService = registerService;
+            _configuration = configuration;
         }
 
         /// <summary>
@@ -54,7 +58,7 @@ namespace IdentityService.Controllers
                 return new ObjectResult(result) { StatusCode = result.StatusCode };
             }
 
-            var confirmationUrl = $"{Request.Scheme}://{Request.Host}/api/Auth/confirm-email";
+            var confirmationUrl = GetEmailConfirmationUrl();
 
             if (result.IsSuccessfull)
             {
@@ -86,6 +90,34 @@ namespace IdentityService.Controllers
             return new ObjectResult(loginResult) { StatusCode = loginResult.StatusCode };
         }
 
+        /// <summary>
+        /// Sends a password reset link when the email belongs to an account.
+        /// The response is intentionally identical for known and unknown addresses.
+        /// </summary>
+        [HttpPost("forgot-password")]
+        [ValidateModel]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequestDto model)
+        {
+            await _emailService.SendPasswordResetAsync(model.Email);
+
+            var response = ApiResponse<object>.Success(
+                "If an account exists for this email, a password reset link has been sent.",
+                (int)HttpStatusCode.OK
+            );
+            return new ObjectResult(response) { StatusCode = response.StatusCode };
+        }
+
+        /// <summary>
+        /// Resets a password with the one-time token delivered by email.
+        /// </summary>
+        [HttpPost("reset-password")]
+        [ValidateModel]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequestDto model)
+        {
+            var result = await _emailService.ResetPasswordAsync(model);
+            return new ObjectResult(result) { StatusCode = result.StatusCode };
+        }
+
         [HttpPost("refresh-token")]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto model)
         {
@@ -103,18 +135,22 @@ namespace IdentityService.Controllers
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
+        [Authorize]
         [HttpGet("my-sessions")]
         public async Task<IActionResult> GetMySessions()
         {
-            var result = await _authService.GetMySessionsByUserId(ClaimTypes.NameIdentifier);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var result = await _authService.GetMySessionsByUserId(userId);
 
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
+        [Authorize]
         [HttpPost("logout-session/{sessionId}")]
         public async Task<IActionResult> LogoutSession(string sessionId)
         {
-            var result = await _authService.LogoutSessionAsync(sessionId);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var result = await _authService.LogoutSessionAsync(sessionId, userId);
             return new ObjectResult(result) { StatusCode = result.StatusCode };
         }
 
@@ -146,7 +182,7 @@ namespace IdentityService.Controllers
             {
                 return BadRequest("User ID is required.");
             }
-            var confirmationUrl = $"{Request.Scheme}://{Request.Host}/api/Auth/confirm-email";
+            var confirmationUrl = GetEmailConfirmationUrl();
 
             var emailResult = await _emailService.SendEmailConfirmationAsync(
                 userId,
@@ -157,6 +193,14 @@ namespace IdentityService.Controllers
                 return new ObjectResult(emailResult) { StatusCode = emailResult.StatusCode };
             }
             return new ObjectResult(emailResult) { StatusCode = emailResult.StatusCode };
+        }
+
+        private string GetEmailConfirmationUrl()
+        {
+            var configuredUrl = _configuration["ClientApp:EmailConfirmationUrl"];
+            return string.IsNullOrWhiteSpace(configuredUrl)
+                ? $"{Request.Scheme}://{Request.Host}/api/Auth/confirm-email"
+                : configuredUrl;
         }
     }
 }

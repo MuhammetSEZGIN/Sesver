@@ -13,6 +13,7 @@ public class MongoDbContext : IMongoDbContext
     private readonly IMongoClient Client;
     public IMongoCollection<User> Users { get; }
     public IMongoCollection<Message> Messages { get; }
+    public IMongoCollection<DmConversation> DmConversations { get; }
 
     public MongoDbContext(IOptions<MongoDbSettings> options)
     {
@@ -20,6 +21,7 @@ public class MongoDbContext : IMongoDbContext
         Database = Client.GetDatabase(options.Value.DatabaseName);
         Users = Database.GetCollection<User>(options.Value.UsersCollection);
         Messages = Database.GetCollection<Message>(options.Value.MessagesCollection);
+        DmConversations = Database.GetCollection<DmConversation>("dm_conversations");
         OnCreating();
     }
 
@@ -44,6 +46,21 @@ public class MongoDbContext : IMongoDbContext
             senderIndexOptions
         );
         Messages.Indexes.CreateOne(senderIndexModel);
+
+        // DmConversation için (UserAId, UserBId) tekil indeks
+        var dmIndexKeysDefinition = Builders<DmConversation>
+            .IndexKeys.Ascending(d => d.UserAId)
+            .Ascending(d => d.UserBId);
+        var dmIndexOptions = new CreateIndexOptions
+        {
+            Name = "UserAId_UserBId_Unique",
+            Unique = true,
+        };
+        var dmIndexModel = new CreateIndexModel<DmConversation>(
+            dmIndexKeysDefinition,
+            dmIndexOptions
+        );
+        DmConversations.Indexes.CreateOne(dmIndexModel);
     }
 
     public IMongoCollection<T> GetCollection<T>(string name)

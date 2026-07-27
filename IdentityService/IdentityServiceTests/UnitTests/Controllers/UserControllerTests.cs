@@ -1,12 +1,15 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using IdentityService.Controllers;
 using IdentityService.DTOs;
 using IdentityService.Interfaces;
 using IdentityService.Models;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Moq;
 using Xunit;
 
@@ -14,13 +17,33 @@ namespace IdentityServiceTests.UnitTests.Controllers
 {
     public class UserControllerTests
     {
+        private const string TestUserId = "user123";
+
         private readonly Mock<IUserService> _mockUserService;
         private readonly UserController _controller;
 
         public UserControllerTests()
         {
             _mockUserService = new Mock<IUserService>();
-            _controller = new UserController(_mockUserService.Object);
+            _controller = new UserController(
+                _mockUserService.Object,
+                new ConfigurationBuilder().AddInMemoryCollection(
+                    new Dictionary<string, string?>
+                    {
+                        ["ClientApp:EmailConfirmationUrl"] =
+                            "https://api.example.com/identity/confirm-email",
+                    }
+                ).Build()
+            );
+
+            var httpContext = new DefaultHttpContext();
+            httpContext.User = new ClaimsPrincipal(
+                new ClaimsIdentity(
+                    new[] { new Claim(ClaimTypes.NameIdentifier, TestUserId) },
+                    "TestAuth"
+                )
+            );
+            _controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
         }
 
         #region UpdateUser Tests
@@ -31,17 +54,14 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                Id = "user123",
                 UserName = "updateduser",
-                Email = "updated@example.com",
-                FullName = "Updated User",
                 AvatarUrl = "https://example.com/avatar.jpg"
             };
 
             var identityResult = IdentityResult.Success;
 
             _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
                 .ReturnsAsync(identityResult);
 
             // Act
@@ -53,7 +73,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var message = response.GetType().GetProperty("Message")?.GetValue(response, null);
             Assert.Equal("User updated successfully", message);
 
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
         }
 
         [Fact]
@@ -62,9 +82,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                Id = "user123",
-                UserName = "updateduser",
-                Email = "updated@example.com"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -78,7 +96,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var identityResult = IdentityResult.Failed(errors);
 
             _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
                 .ReturnsAsync(identityResult);
 
             // Act
@@ -93,7 +111,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             Assert.Equal("DuplicateUserName", returnedErrors.First().Code);
             Assert.Equal("Username already exists", returnedErrors.First().Description);
 
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
         }
 
         [Fact]
@@ -102,9 +120,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                Id = "user123",
-                UserName = "updateduser",
-                Email = "invalid-email"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -115,7 +131,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var identityResult = IdentityResult.Failed(errors);
 
             _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
                 .ReturnsAsync(identityResult);
 
             // Act
@@ -128,7 +144,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             );
             Assert.Equal(2, returnedErrors.Count());
 
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
         }
 
         [Fact]
@@ -137,17 +153,15 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                Id = "user123",
                 UserName = "updateduser",
-                Email = "updated@example.com",
-                FullName = null,
-                AvatarUrl = null
+                AvatarUrl = null,
+                Bio = null
             };
 
             var identityResult = IdentityResult.Success;
 
             _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
                 .ReturnsAsync(identityResult);
 
             // Act
@@ -157,7 +171,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var okResult = Assert.IsType<OkObjectResult>(result);
             Assert.NotNull(okResult.Value);
 
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
         }
 
         [Fact]
@@ -166,9 +180,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Arrange
             var updateModel = new UpdateUserModel
             {
-                Id = "nonexistent",
-                UserName = "updateduser",
-                Email = "updated@example.com"
+                UserName = "updateduser"
             };
 
             var errors = new[]
@@ -178,7 +190,7 @@ namespace IdentityServiceTests.UnitTests.Controllers
             var identityResult = IdentityResult.Failed(errors);
 
             _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
                 .ReturnsAsync(identityResult);
 
             // Act
@@ -192,7 +204,91 @@ namespace IdentityServiceTests.UnitTests.Controllers
             Assert.Single(returnedErrors);
             Assert.Equal("UserNotFound", returnedErrors.First().Code);
 
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
+        }
+
+        [Fact]
+        public async Task UpdateUser_ServiceNotCalled_WhenModelIsInvalid()
+        {
+            // This would normally be handled by [ValidateModel] attribute
+            // but we're testing the controller in isolation
+            // In a real scenario, model validation happens before controller action
+
+            // Arrange
+            var updateModel = new UpdateUserModel { UserName = "test" };
+
+            var identityResult = IdentityResult.Success;
+
+            _mockUserService
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
+                .ReturnsAsync(identityResult);
+
+            // Act
+            var result = await _controller.UpdateUser(updateModel);
+
+            // Assert
+            Assert.IsType<OkObjectResult>(result);
+            _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
+        }
+
+        #endregion
+
+        #region ChangeEmail Tests
+
+        [Fact]
+        public async Task ChangeEmail_ValidRequest_ReturnsServiceResponse()
+        {
+            var model = new ChangeEmailRequestDto { Email = "new@example.com" };
+            _mockUserService
+                .Setup(x =>
+                    x.ChangeEmailAsync(
+                        TestUserId,
+                        model,
+                        "https://api.example.com/identity/confirm-email"
+                    )
+                )
+                .ReturnsAsync(
+                    ApiResponse<object>.Success(
+                        "Email updated. Please check your new address for the confirmation link."
+                    )
+                );
+
+            var result = await _controller.ChangeEmail(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(200, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.True(response.IsSuccessfull);
+            _mockUserService.Verify(
+                x =>
+                    x.ChangeEmailAsync(
+                        TestUserId,
+                        model,
+                        "https://api.example.com/identity/confirm-email"
+                    ),
+                Times.Once
+            );
+        }
+
+        [Fact]
+        public async Task ChangeEmail_DuplicateEmail_ReturnsBadRequest()
+        {
+            var model = new ChangeEmailRequestDto { Email = "taken@example.com" };
+            _mockUserService
+                .Setup(x => x.ChangeEmailAsync(TestUserId, model, It.IsAny<string>()))
+                .ReturnsAsync(
+                    ApiResponse<object>.Failed(
+                        "Email could not be updated.",
+                        new[] { "Email is already taken." }
+                    )
+                );
+
+            var result = await _controller.ChangeEmail(model);
+
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(400, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<object>>(objectResult.Value);
+            Assert.False(response.IsSuccessfull);
         }
 
         #endregion
@@ -350,39 +446,6 @@ namespace IdentityServiceTests.UnitTests.Controllers
             _mockUserService.Verify(x => x.DeleteUserAsync(userId), Times.Once);
         }
 
-        #endregion
-
-        #region Service Integration Tests
-
-        [Fact]
-        public async Task UpdateUser_ServiceNotCalled_WhenModelIsInvalid()
-        {
-            // This would normally be handled by [ValidateModel] attribute
-            // but we're testing the controller in isolation
-            // In a real scenario, model validation happens before controller action
-
-            // Arrange
-            var updateModel = new UpdateUserModel
-            {
-                Id = "user123",
-                UserName = "test",
-                Email = "test@example.com"
-            };
-
-            var identityResult = IdentityResult.Success;
-
-            _mockUserService
-                .Setup(x => x.UpdateUserAsync(It.IsAny<UpdateUserModel>()))
-                .ReturnsAsync(identityResult);
-
-            // Act
-            var result = await _controller.UpdateUser(updateModel);
-
-            // Assert
-            Assert.IsType<OkObjectResult>(result);
-            _mockUserService.Verify(x => x.UpdateUserAsync(updateModel), Times.Once);
-        }
-
         [Fact]
         public async Task DeleteUser_ServiceCalledOnce_ForValidRequest()
         {
@@ -400,6 +463,129 @@ namespace IdentityServiceTests.UnitTests.Controllers
             // Assert
             Assert.IsType<OkObjectResult>(result);
             _mockUserService.Verify(x => x.DeleteUserAsync(userId), Times.Once);
+        }
+
+        #endregion
+
+        #region GetMe Tests
+
+        [Fact]
+        public async Task GetMe_UserExists_ReturnsOkResult()
+        {
+            // Arrange
+            var meDto = new UserMeDto
+            {
+                Id = TestUserId,
+                UserName = "testuser",
+                Email = "test@example.com",
+                Bio = "hello",
+                AvatarUrl = "https://example.com/avatar.jpg",
+                EmailConfirmed = true
+            };
+
+            _mockUserService.Setup(x => x.GetMeAsync(TestUserId)).ReturnsAsync(meDto);
+
+            // Act
+            var result = await _controller.GetMe();
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(meDto, okResult.Value);
+        }
+
+        [Fact]
+        public async Task GetMe_UserNotFound_ReturnsNotFound()
+        {
+            // Arrange
+            _mockUserService.Setup(x => x.GetMeAsync(TestUserId)).ReturnsAsync((UserMeDto)null);
+
+            // Act
+            var result = await _controller.GetMe();
+
+            // Assert
+            Assert.IsType<NotFoundObjectResult>(result);
+        }
+
+        #endregion
+
+        #region ChangePassword Tests
+
+        [Fact]
+        public async Task ChangePassword_Succeeds_ReturnsOkResult()
+        {
+            // Arrange
+            var model = new ChangePasswordModel
+            {
+                CurrentPassword = "OldPass1!",
+                NewPassword = "NewPass1!"
+            };
+
+            _mockUserService
+                .Setup(x => x.ChangePasswordAsync(TestUserId, model.CurrentPassword, model.NewPassword))
+                .ReturnsAsync(
+                    ApiResponse<object>.Success(
+                        "Password changed successfully. Please sign in again."
+                    )
+                );
+
+            // Act
+            var result = await _controller.ChangePassword(model);
+
+            // Assert
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(200, objectResult.StatusCode);
+        }
+
+        [Fact]
+        public async Task ChangePassword_Fails_ReturnsBadRequest()
+        {
+            // Arrange
+            var model = new ChangePasswordModel
+            {
+                CurrentPassword = "WrongPass",
+                NewPassword = "NewPass1!"
+            };
+
+            _mockUserService
+                .Setup(x => x.ChangePasswordAsync(TestUserId, model.CurrentPassword, model.NewPassword))
+                .ReturnsAsync(
+                    ApiResponse<object>.Failed(
+                        "Password could not be changed.",
+                        new[] { "Incorrect password" }
+                    )
+                );
+
+            // Act
+            var result = await _controller.ChangePassword(model);
+
+            // Assert
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(400, objectResult.StatusCode);
+        }
+
+        #endregion
+
+        #region SearchUsers Tests
+
+        [Fact]
+        public async Task SearchUsers_ReturnsOkResult_WithResults()
+        {
+            // Arrange
+            var results = new List<UserSearchResultDto>
+            {
+                new UserSearchResultDto { Id = "u2", UserName = "alice", AvatarUrl = null }
+            };
+
+            _mockUserService
+                .Setup(x => x.SearchUsersAsync(TestUserId, "ali", 1, 20))
+                .ReturnsAsync(results);
+
+            // Act
+            var result = await _controller.SearchUsers("ali", 1, 20);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            Assert.Equal(results, okResult.Value);
         }
 
         #endregion

@@ -40,6 +40,13 @@ namespace ClanService.Services
 
                 channel.ChannelId = Guid.NewGuid();
                 await _channelRepository.AddAsync(channel);
+                await _clanMessageProducer.PublishChannelUpsertedMessageAsync(new ChannelUpsertedMessage
+                {
+                    ChannelId = channel.ChannelId.ToString(),
+                    ClanId = channel.ClanId.ToString(),
+                    Name = channel.Name,
+                    ChannelType = ChannelType.TextChannel
+                });
                 _logger.LogInformation("Channel {ChannelId} created successfully for clan {ClanId}", channel.ChannelId, channel.ClanId);
                 return (channel, "Channel created successfully");
             }
@@ -66,6 +73,13 @@ namespace ClanService.Services
             try
             {
                 await _channelRepository.UpdateAsync(channel);
+                await _clanMessageProducer.PublishChannelUpsertedMessageAsync(new ChannelUpsertedMessage
+                {
+                    ChannelId = channel.ChannelId.ToString(),
+                    ClanId = channel.ClanId.ToString(),
+                    Name = channel.Name,
+                    ChannelType = ChannelType.TextChannel
+                });
                 _logger.LogInformation("Channel {ChannelId} updated successfully", channel.ChannelId);
                 return channel;
             }
