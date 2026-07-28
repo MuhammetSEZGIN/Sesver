@@ -453,8 +453,9 @@ services:
       echo "Gecici sertifika olusturuldu: $$CERT_DIR";
       fi'
 
-  # 13b. app.<domain> icin GERCEK sertifikayi alir. Normal "up" ile calismaz;
-  # deploy workflow'u yalnizca gercek sertifika yokken tetikler.
+  # 13b. app.<domain> icin GERCEK sertifikayi alir. Normal "up" ile calismaz
+  # ve deploy workflow'unda da yer almaz; yeni alan adi eklerken bir kez elle
+  # calistirilir (bkz. DEPLOY-app-subdomain.md).
   # Kok domain Netlify'da oldugu icin sertifika yalnizca app. alt alan adina alinir.
   # --force-renewal: cert-bootstrap'in biraktigi self-signed dosyayi ezmek icin
   # gerekli; aksi halde certbot "sertifika zaten var" deyip cikar.

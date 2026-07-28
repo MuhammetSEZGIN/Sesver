@@ -26,39 +26,54 @@ CORS_ORIGIN_4=https://tauri.localhost
 
 `SERVER_DOMAIN` değişmez (`voxify.com.tr`); nginx `app.` önekini kendisi ekler.
 
-## 2. Deploy
+## 2. SSL sertifikası — bir kez, elle
 
-`main`'e push yeterli — `.github/workflows/deploy.yml` her şeyi yapar. Elle
-komut çalıştırmanız gerekmez.
+Sertifika kurulumu **deploy workflow'unun parçası değildir**. Tek seferlik bir
+iştir; her deploy'da tekrarlanması hem gereksiz olurdu hem de sertifika
+adımındaki bir hata ilgisiz bir kod deploy'unu durdururdu.
 
-Workflow sırasıyla:
-
-1. **Conflict koruması** — sunucuda commit'lenmemiş değişiklik varsa ya da
-   geçmiş ayrışmışsa deploy hiç başlamaz. `git pull` yerine
-   `fetch` + `merge --ff-only` kullanılır, böylece conflict marker'lı bir
-   çalışma ağacı oluşmaz ve eski sürüm çalışmaya devam eder.
-2. **`cert-bootstrap`** — geçici self-signed sertifika. nginx eksik
-   `ssl_certificate` ile hiç başlamaz, certbot'un HTTP-01 doğrulaması ise
-   nginx'in `:80`'de ayakta olmasını ister; bu adım o kilidi kırar. Gerçek
-   sertifika zaten varsa kendini atlar.
-3. **`up -d --build`**
-4. **`certbot-init`** — yalnızca gerçek sertifika yoksa. Let's Encrypt rate
-   limit'ine takılmamak için `renewal/app.<domain>.conf` varlığına bakılır; bu
-   dosya yalnızca certbot'un kendi aldığı sertifikada oluşur, self-signed
-   bootstrap'ta oluşmaz. Ardından nginx reload edilir.
-
-Sonraki yenilemeleri mevcut `certbot` servisi devralır.
-
-### Elle çalıştırmak gerekirse
+Sunucuda, `app.` alan adına geçerken bir kez:
 
 ```bash
+cd ~/Sesver
+
+# 1) Gecici self-signed sertifika.
+#    nginx eksik ssl_certificate ile hic baslamaz; certbot'un HTTP-01
+#    dogrulamasi ise nginx'in :80'de ayakta olmasini ister. Bu adim o kilidi
+#    kirar. Gercek sertifika zaten varsa kendini atlar.
 docker compose run --rm cert-bootstrap
+
+# 2) Servisleri baslat (nginx artik ayaga kalkabilir)
 docker compose up -d --build
+
+# 3) Gercek sertifikayi al — app.voxify.com.tr DNS'te sunucuya cozuluyor olmali
 docker compose run --rm certbot-init
+
+# 4) nginx'i yeni sertifikayla yeniden yukle
 docker compose exec nginx nginx -s reload
 ```
 
-## 3. Doğrulama
+Bundan sonraki yenilemeleri `certbot` servisi otomatik devralır.
+
+## 3. Kod deploy'u
+
+`main`'e push yeterli — `.github/workflows/deploy.yml` çalışır:
+
+1. **Conflict koruması** — sunucuda takip edilen bir dosya elle değişmişse ya
+   da geçmiş ayrışmışsa deploy hiç başlamaz. `git pull` yerine
+   `fetch` + `merge --ff-only` kullanılır, böylece conflict marker'lı bir
+   çalışma ağacı oluşmaz ve eski sürüm çalışmaya devam eder.
+   Takip edilmeyen dosyalar (`.env` gibi) deploy'u engellemez.
+2. `docker compose down && up -d --build`
+3. `docker image prune -f`
+
+Deploy conflict yüzünden durursa sunucuda:
+
+```bash
+cd ~/Sesver && git checkout -- <dosya>
+```
+
+## 4. Doğrulama
 
 ```bash
 curl -I https://app.voxify.com.tr/update/windows-x86_64/1.0.0
