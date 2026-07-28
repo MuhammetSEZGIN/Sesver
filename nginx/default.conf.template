@@ -23,8 +23,11 @@ server {
     server_name app.${SERVER_DOMAIN};
 
     # SSL settings
-    ssl_certificate     /etc/letsencrypt/live/app.${SERVER_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/app.${SERVER_DOMAIN}/privkey.pem;
+    # active/ = cert-bootstrap tarafindan hazirlanan yol. Gercek sertifika
+    # alinana kadar self-signed dosyalari, sonrasinda live/'a symlink icerir.
+    # nginx dogrudan live/'i okusaydi sertifika alinmadan hic baslayamazdi.
+    ssl_certificate     /etc/letsencrypt/active/app.${SERVER_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/active/app.${SERVER_DOMAIN}/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
