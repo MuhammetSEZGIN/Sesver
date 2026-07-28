@@ -171,6 +171,10 @@ services:
       RabbitMQ__UserName: "${RABBITMQ_USER}"
       RabbitMQ__Password: "${RABBITMQ_PASSWORD}"
       RabbitMQ__QueueName: "${RABBITMQ_QUEUE}"
+      Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
+      Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
+      Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
     depends_on:
       clanservice-db:
         condition: service_healthy
@@ -224,6 +228,8 @@ services:
       Jwt__Audience: "${JWT_AUDIENCE}"
       Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
       Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
+      Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       MongoDbConnection__ConnectionString: "mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@message-db:27017"
       MongoDbConnection__DatabaseName: "messageservicedb"
       MongoDbConnection__UsersCollection: "users"
@@ -253,6 +259,8 @@ services:
       Jwt__Audience: "${JWT_AUDIENCE}"
       Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
       Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
+      Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       RabbitMQ__HostName: "${RABBITMQ_HOST}"
       RabbitMQ__VirtualHost: "${RABBITMQ_VHOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
@@ -277,6 +285,8 @@ services:
       Jwt__Audience: "${JWT_AUDIENCE}"
       Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
       Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
+      Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       RabbitMQ__HostName: "${RABBITMQ_HOST}"
       RabbitMQ__VirtualHost: "${RABBITMQ_VHOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
@@ -370,6 +380,8 @@ services:
       JWT__Audience: "${JWT_AUDIENCE}"
       Cors__AllowedOrigins__0: "${CORS_ORIGIN_1}"
       Cors__AllowedOrigins__1: "${CORS_ORIGIN_2}"
+      Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
+      Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
     ports:
       - "5000:5000"
     depends_on:
@@ -408,7 +420,7 @@ services:
       - presenceservice
       - notificationservice
 
-  # 13. Certbot (Let's Encrypt SSL)
+  # 13. Certbot (Let's Encrypt SSL) — mevcut sertifikalari yeniler
   certbot:
     image: certbot/certbot
     container_name: certbot
@@ -416,6 +428,47 @@ services:
       - certbot_www:/var/www/certbot
       - certbot_conf:/etc/letsencrypt
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # 13a. Gecici self-signed sertifika. nginx eksik ssl_certificate ile hic
+  # baslamaz; certbot'un HTTP-01 dogrulamasi ise nginx'in :80'de ayakta
+  # olmasini gerektirir. Bu adim o kilidi kirar, gercek sertifika gelince ezilir.
+  #   docker compose run --rm cert-bootstrap
+  cert-bootstrap:
+    image: alpine:latest
+    profiles: ["certbot-init"]
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: >
+      sh -c '
+      CERT_DIR=/etc/letsencrypt/live/app.${SERVER_DOMAIN};
+      if [ -f "$$CERT_DIR/fullchain.pem" ]; then
+        echo "Sertifika zaten var, atlaniyor: $$CERT_DIR";
+      else
+        apk add --no-cache openssl >/dev/null &&
+        mkdir -p "$$CERT_DIR" &&
+        openssl req -x509 -nodes -newkey rsa:2048 -days 1
+          -keyout "$$CERT_DIR/privkey.pem"
+          -out "$$CERT_DIR/fullchain.pem"
+          -subj "/CN=app.${SERVER_DOMAIN}" &&
+        echo "Gecici sertifika olusturuldu: $$CERT_DIR";
+      fi'
+
+  # 13b. app.<domain> icin GERCEK sertifikayi alir. Normal "up" ile calismaz;
+  # deploy workflow'u yalnizca gercek sertifika yokken tetikler.
+  # Kok domain Netlify'da oldugu icin sertifika yalnizca app. alt alan adina alinir.
+  # --force-renewal: cert-bootstrap'in biraktigi self-signed dosyayi ezmek icin
+  # gerekli; aksi halde certbot "sertifika zaten var" deyip cikar.
+  certbot-init:
+    image: certbot/certbot
+    profiles: ["certbot-init"]
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_conf:/etc/letsencrypt
+    entrypoint: >
+      certbot certonly --webroot -w /var/www/certbot
+      -d app.${SERVER_DOMAIN}
+      --email ${LETSENCRYPT_EMAIL} --agree-tos --no-eff-email
+      --non-interactive --force-renewal
 
 volumes:
   clan_pg_data:

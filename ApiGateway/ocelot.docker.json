@@ -554,7 +554,7 @@
     }
   ],
   "GlobalConfiguration": {
-    "BaseUrl": "https://voxify.com.tr",
+    "BaseUrl": "https://app.voxify.com.tr",
     "RateLimitOptions": {
       "DisableRateLimitHeaders": false,
       "QuotaExceededMessage": "Too many requests. Please try again later.",

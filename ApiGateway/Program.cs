@@ -21,10 +21,10 @@ else
     builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
 }
 
-var corsConfigOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-// 5174: admin paneli (sesver-admin) — lokalden uzak sunucuya baglanir
-var corsDefaultOrigins = new[] { "http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5174", "tauri://localhost", "https://tauri.localhost","http://tauri.localhost" };
-var corsAllowedOrigins = corsConfigOrigins.Union(corsDefaultOrigins).ToArray();
+// Izinli origin'ler tamamen yapilandirmadan gelir (Cors__AllowedOrigins__N).
+// Sabit liste tutulmaz; aksi halde ortam degiskeniyle daraltmak mumkun olmaz.
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
 
 builder.Services.AddCors(options =>
 {

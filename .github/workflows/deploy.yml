@@ -39,9 +39,60 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Herhangi bir adim basarisiz olursa deploy durur; yarim guncellenmis
+          # bir surumun ayaga kalkmasindansa eski surumun calismaya devam etmesi
+          # tercih edilir.
+          script_stop: true
           script: |
+            set -euo pipefail
             cd ~/Sesver
-            git pull origin main
+
+            # ── Kaynak guncelleme ──
+            # Sunucudaki calisma agacinda takip edilen bir dosya degismisse
+            # (elle yapilan mudahale) fast-forward merge conflict uretir. Bu
+            # durumda deploy'a hic baslamayiz; .env gibi takip edilmeyen
+            # dosyalar bu kontrolun disindadir.
+            if ! git diff --quiet HEAD -- || ! git diff --cached --quiet; then
+              echo "HATA: Sunucuda commit'lenmemis degisiklikler var. Deploy iptal edildi."
+              git status --short
+              exit 1
+            fi
+
+            git fetch origin main
+            # --ff-only: uzak ve yerel gecmis ayrismissa merge/rebase denemek
+            # yerine hata verir. Sessizce conflict'li bir agac olusmaz.
+            if ! git merge --ff-only origin/main; then
+              echo "HATA: main fast-forward edilemedi (gecmis ayrismis). Deploy iptal edildi."
+              exit 1
+            fi
+
+            # ── SSL ──
+            # API app.<domain> uzerinden yayinlanir. nginx eksik ssl_certificate
+            # ile hic baslamaz; certbot'un HTTP-01 dogrulamasi ise nginx'in :80'de
+            # ayakta olmasini gerektirir. Gecici self-signed sertifika bu kilidi
+            # kirar ve gercek sertifika zaten varsa kendini atlar.
+            docker compose run --rm cert-bootstrap
+
+            # ── Servisler ──
             docker compose down
             docker compose up -d --build
+
+            # Gercek sertifika yoksa bir kez al. Let's Encrypt rate limit'ine
+            # takilmamak icin her deploy'da degil yalnizca eksikse calisir:
+            # renewal/ dizini yalnizca certbot'un kendi aldigi sertifikada olusur,
+            # cert-bootstrap'in biraktigi self-signed dosyada olusmaz.
+            SERVER_DOMAIN="$(grep -E '^SERVER_DOMAIN=' .env | cut -d= -f2- | tr -d '\r"')"
+            if [ -z "$SERVER_DOMAIN" ]; then
+              echo "HATA: .env icinde SERVER_DOMAIN bulunamadi."
+              exit 1
+            fi
+
+            if docker compose exec -T nginx test -f "/etc/letsencrypt/renewal/app.$SERVER_DOMAIN.conf" 2>/dev/null; then
+              echo "Let's Encrypt sertifikasi mevcut, certbot-init atlaniyor."
+            else
+              echo "Gercek sertifika yok, certbot-init calistiriliyor..."
+              docker compose run --rm certbot-init
+              docker compose exec -T nginx nginx -s reload
+            fi
+
             docker image prune -f
