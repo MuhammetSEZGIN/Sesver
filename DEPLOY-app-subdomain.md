@@ -34,26 +34,35 @@ adımındaki bir hata ilgisiz bir kod deploy'unu durdururdu.
 
 Sunucuda, `app.` alan adına geçerken bir kez:
 
+nginx sertifikayı `/etc/letsencrypt/active/app.<domain>/` yolundan okur.
+Bu dizin başta self-signed dosyaları içerir, gerçek sertifika alınınca
+certbot'un `live/` dizinine symlink'e dönüşür. nginx doğrudan `live/`'ı
+okusaydı sertifika alınmadan hiç başlayamaz, certbot da nginx olmadan
+doğrulama yapamazdı.
+
 ```bash
 cd ~/Sesver
 
-# 1) Gecici self-signed sertifika.
-#    nginx eksik ssl_certificate ile hic baslamaz; certbot'un HTTP-01
-#    dogrulamasi ise nginx'in :80'de ayakta olmasini ister. Bu adim o kilidi
-#    kirar. Gercek sertifika zaten varsa kendini atlar.
+# 1) Gecici self-signed sertifika (active/ dizinine).
+#    certbot'un live/ dizinine dokunulmaz.
 docker compose run --rm cert-bootstrap
 
-# 2) Servisleri baslat (nginx artik ayaga kalkabilir)
+# 2) Servisleri baslat — nginx artik ayaga kalkabilir
 docker compose up -d --build
 
-# 3) Gercek sertifikayi al — app.voxify.com.tr DNS'te sunucuya cozuluyor olmali
+# 3) Gercek sertifikayi al.
+#    app.voxify.com.tr DNS'te sunucuya cozuluyor olmali (HTTP-01 dogrulamasi).
+#    LETSENCRYPT_EMAIL .env'de tanimli degilse basina ekleyin:
+#      LETSENCRYPT_EMAIL=... docker compose run --rm certbot-init
 docker compose run --rm certbot-init
 
-# 4) nginx'i yeni sertifikayla yeniden yukle
+# 4) active/ dizinini gercek sertifikaya baglayip nginx'i yeniden yukle
+docker compose run --rm cert-bootstrap
 docker compose exec nginx nginx -s reload
 ```
 
-Bundan sonraki yenilemeleri `certbot` servisi otomatik devralır.
+Bundan sonraki yenilemeleri `certbot` servisi otomatik devralır; `active/`
+artık symlink olduğu için yenilenen sertifika kendiliğinden devreye girer.
 
 ## 3. Kod deploy'u
 
