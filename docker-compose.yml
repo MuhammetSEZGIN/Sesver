@@ -438,19 +438,19 @@ services:
     profiles: ["certbot-init"]
     volumes:
       - certbot_conf:/etc/letsencrypt
+    # Not: YAML'in ">" katlamasinda fazladan girintili satirlarin sonlari
+    # korunur; kabuk komutlari bu yuzden tek girinti seviyesinde tutulmali,
+    # aksi halde devam argumanlari ayri komut sanilir.
     entrypoint: >
       sh -c '
       CERT_DIR=/etc/letsencrypt/live/app.${SERVER_DOMAIN};
       if [ -f "$$CERT_DIR/fullchain.pem" ]; then
-        echo "Sertifika zaten var, atlaniyor: $$CERT_DIR";
+      echo "Sertifika zaten var, atlaniyor: $$CERT_DIR";
       else
-        apk add --no-cache openssl >/dev/null &&
-        mkdir -p "$$CERT_DIR" &&
-        openssl req -x509 -nodes -newkey rsa:2048 -days 1
-          -keyout "$$CERT_DIR/privkey.pem"
-          -out "$$CERT_DIR/fullchain.pem"
-          -subj "/CN=app.${SERVER_DOMAIN}" &&
-        echo "Gecici sertifika olusturuldu: $$CERT_DIR";
+      apk add --no-cache openssl >/dev/null &&
+      mkdir -p "$$CERT_DIR" &&
+      openssl req -x509 -nodes -newkey rsa:2048 -days 1 -keyout "$$CERT_DIR/privkey.pem" -out "$$CERT_DIR/fullchain.pem" -subj "/CN=app.${SERVER_DOMAIN}" &&
+      echo "Gecici sertifika olusturuldu: $$CERT_DIR";
       fi'
 
   # 13b. app.<domain> icin GERCEK sertifikayi alir. Normal "up" ile calismaz;
