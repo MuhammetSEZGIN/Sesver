@@ -53,8 +53,14 @@ jobs:
             # durumda deploy'a hic baslamayiz; .env gibi takip edilmeyen
             # dosyalar bu kontrolun disindadir.
             if ! git diff --quiet HEAD -- || ! git diff --cached --quiet; then
-              echo "HATA: Sunucuda commit'lenmemis degisiklikler var. Deploy iptal edildi."
-              git status --short
+              echo "HATA: Sunucuda takip edilen dosyalarda commit'lenmemis degisiklik var."
+              echo "Deploy iptal edildi. Duzeltmek icin sunucuda:"
+              echo "  cd ~/Sesver && git checkout -- <dosya>"
+              echo ""
+              echo "Iptale sebep olan dosyalar:"
+              # Yalnizca takip edilen degisiklikler; ?? ile isaretli dosyalar
+              # deploy'u engellemez, listeye de girmemeli.
+              git status --short --untracked-files=no
               exit 1
             fi
 
