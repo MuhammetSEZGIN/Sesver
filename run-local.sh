@@ -64,6 +64,17 @@ LOCAL_SMTP_PASSWORD="${SMTP_PASSWORD:-}"
 LOCAL_PASSWORD_RESET_URL="${PASSWORD_RESET_URL:-http://localhost:5173/reset-password}"
 LOCAL_EMAIL_CONFIRMATION_URL="${EMAIL_CONFIRMATION_URL:-http://localhost:5173/confirm-email}"
 
+# CORS origin'leri artik servislerde sabit kodlu degil; hepsi yapilandirmadan
+# okunuyor. Lokal calistirmada tum CORS kullanan servislere ayni liste verilir.
+LOCAL_CORS_ARGS=(
+  "Cors__AllowedOrigins__0=http://localhost:5173" "Cors__AllowedOrigins__1=http://localhost:3000"
+  "Cors__AllowedOrigins__2=http://localhost:1420" "Cors__AllowedOrigins__3=http://tauri.localhost"
+  "Cors__AllowedOrigins__4=https://tauri.localhost" "Cors__AllowedOrigins__5=tauri://localhost"
+  "Cors__AllowedOrigins__6=http://127.0.0.1:5173" "Cors__AllowedOrigins__7=http://127.0.0.1:3000"
+  "Cors__AllowedOrigins__8=http://127.0.0.1:1420" "Cors__AllowedOrigins__9=http://localhost:5174"
+  "Cors__AllowedOrigins__10=http://127.0.0.1:5174"
+)
+
 check_local_infrastructure() {
   if ! command -v docker >/dev/null 2>&1; then
     echo "Docker bulunamadı. Önce yerel altyapıyı çalıştırın."
@@ -152,7 +163,8 @@ start_dotnet "clanservice" "ClanService/ClanService/ClanService.csproj" "http://
   "ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=ClanDb;Username=admin;Password=admin123" \
   "RabbitMQ__HostName=$LOCAL_RABBIT_HOST" "RabbitMQ__VirtualHost=$LOCAL_RABBIT_VHOST" \
   "RabbitMQ__Port=$LOCAL_RABBIT_PORT" "RabbitMQ__UserName=$LOCAL_RABBIT_USER" \
-  "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD"
+  "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD" \
+  "${LOCAL_CORS_ARGS[@]}"
 
 start_dotnet "messageservice" "MessageService/MessageService.csproj" "http://localhost:5107" \
   "Jwt__Key=$LOCAL_JWT_KEY" "Jwt__Issuer=$LOCAL_JWT_ISSUER" "Jwt__Audience=$LOCAL_JWT_AUDIENCE" \
@@ -160,14 +172,16 @@ start_dotnet "messageservice" "MessageService/MessageService.csproj" "http://loc
   "MongoDbConnection__DatabaseName=messageservicedb" \
   "RabbitMQ__HostName=$LOCAL_RABBIT_HOST" "RabbitMQ__VirtualHost=$LOCAL_RABBIT_VHOST" \
   "RabbitMQ__Port=$LOCAL_RABBIT_PORT" "RabbitMQ__UserName=$LOCAL_RABBIT_USER" \
-  "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD"
+  "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD" \
+  "${LOCAL_CORS_ARGS[@]}"
 
 start_dotnet "presenceservice" "PresenceService/PresenceService.csproj" "http://localhost:5241" \
   "Jwt__Key=$LOCAL_JWT_KEY" "Jwt__Issuer=$LOCAL_JWT_ISSUER" "Jwt__Audience=$LOCAL_JWT_AUDIENCE" \
   "RabbitMQ__HostName=$LOCAL_RABBIT_HOST" "RabbitMQ__VirtualHost=$LOCAL_RABBIT_VHOST" \
   "RabbitMQ__Port=$LOCAL_RABBIT_PORT" "RabbitMQ__UserName=$LOCAL_RABBIT_USER" \
   "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD" \
-  "Services__IdentityBaseUrl=http://localhost:5158" "Services__MessageBaseUrl=http://localhost:5107"
+  "Services__IdentityBaseUrl=http://localhost:5158" "Services__MessageBaseUrl=http://localhost:5107" \
+  "${LOCAL_CORS_ARGS[@]}"
 
 start_dotnet "notificationservice" "NotificationService/NotificationService.csproj" "http://localhost:5160" \
   "ConnectionStrings__DefaultConnection=Host=localhost;Port=5434;Database=NotificationDb;Username=admin;Password=admin123" \
@@ -175,11 +189,7 @@ start_dotnet "notificationservice" "NotificationService/NotificationService.cspr
   "RabbitMQ__HostName=$LOCAL_RABBIT_HOST" "RabbitMQ__VirtualHost=$LOCAL_RABBIT_VHOST" \
   "RabbitMQ__Port=$LOCAL_RABBIT_PORT" "RabbitMQ__UserName=$LOCAL_RABBIT_USER" \
   "RabbitMQ__Password=$LOCAL_RABBIT_PASSWORD" \
-  "Cors__AllowedOrigins__0=http://localhost:5173" "Cors__AllowedOrigins__1=http://localhost:3000" \
-  "Cors__AllowedOrigins__2=http://localhost:1420" "Cors__AllowedOrigins__3=http://tauri.localhost" \
-  "Cors__AllowedOrigins__4=https://tauri.localhost" "Cors__AllowedOrigins__5=tauri://localhost" \
-  "Cors__AllowedOrigins__6=http://127.0.0.1:5173" "Cors__AllowedOrigins__7=http://127.0.0.1:3000" \
-  "Cors__AllowedOrigins__8=http://127.0.0.1:1420"
+  "${LOCAL_CORS_ARGS[@]}"
 
 start_dotnet "versioncontrolservice" "VersionControlService/VersionControlService.csproj"     "http://localhost:5005"
 
@@ -198,7 +208,8 @@ sleep 5
 start_dotnet "apigateway" "ApiGateway/ApiGateway.csproj" "http://localhost:5000" \
   "Jwt__Key=$LOCAL_JWT_KEY" "Jwt__Issuer=$LOCAL_JWT_ISSUER" "Jwt__Audience=$LOCAL_JWT_AUDIENCE" \
   "AuthService__BaseUrl=http://localhost:8081" \
-  "Redis__ConnectionString=localhost:6379,abortConnect=false"
+  "Redis__ConnectionString=localhost:6379,abortConnect=false" \
+  "${LOCAL_CORS_ARGS[@]}"
 
 if [[ "$RUN_VOICE" == true ]]; then
   echo "Starting voiceservice..."

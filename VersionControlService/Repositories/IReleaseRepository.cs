@@ -31,4 +31,19 @@ public interface IReleaseRepository
     /// Gets all releases.
     /// </summary>
     Task<List<ReleaseEntity>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets a specific release by id.
+    /// </summary>
+    Task<ReleaseEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes a release by id. Returns false when no release matched.
+    /// </summary>
+    Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Marks a single release as the latest one, clearing the flag on all others.
+    /// </summary>
+    Task<bool> SetLatestAsync(Guid id, CancellationToken cancellationToken = default);
 }

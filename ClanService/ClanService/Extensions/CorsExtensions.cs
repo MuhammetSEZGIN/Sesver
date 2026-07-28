@@ -6,9 +6,10 @@ public static class CorsExtensions
 {
     public static IServiceCollection AddCustomCors(this IServiceCollection services, IConfiguration configuration)
     {
-        var configOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-        var defaultOrigins = new[] { "https://voxify.com.tr", "https://www.voxify.com.tr", "http://localhost:5173", "tauri://localhost", "https://tauri.localhost" };
-        var allowedOrigins = configOrigins.Union(defaultOrigins).ToArray();
+        // Izinli origin'ler tamamen yapilandirmadan gelir (Cors__AllowedOrigins__N).
+        // Sabit liste tutulmaz; aksi halde ortam degiskeniyle daraltmak mumkun olmaz.
+        var allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? Array.Empty<string>();
 
         services.AddCors(options =>
         {

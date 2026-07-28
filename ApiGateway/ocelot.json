@@ -3,34 +3,86 @@
     {
       "DownstreamPathTemplate": "/messagehub",
       "DownstreamScheme": "ws",
-      "DownstreamHostAndPorts": [ { "Host": "localhost", "Port": 5107 } ],
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5107
+        }
+      ],
       "UpstreamPathTemplate": "/messagehub",
-      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ]
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "DownstreamPathTemplate": "/messagehub/{everything}",
       "DownstreamScheme": "ws",
-      "DownstreamHostAndPorts": [ { "Host": "localhost", "Port": 5107 } ],
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5107
+        }
+      ],
       "UpstreamPathTemplate": "/messagehub/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ]
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "OPTIONS"
+      ]
     },
     {
       "DownstreamPathTemplate": "/api/Notification",
       "DownstreamScheme": "http",
-      "DownstreamHostAndPorts": [ { "Host": "localhost", "Port": 5160 } ],
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5160
+        }
+      ],
       "UpstreamPathTemplate": "/notification",
-      "UpstreamHttpMethod": [ "GET", "POST", "DELETE" ],
-      "AuthenticationOptions": { "AuthenticationProviderKey": "Bearer", "AllowedScopes": [] },
-      "RateLimitOptions": { "EnableRateLimiting": true, "Period": "1s", "PeriodTimespan": 1, "Limit": 20 }
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "RateLimitOptions": {
+        "EnableRateLimiting": true,
+        "Period": "1s",
+        "PeriodTimespan": 1,
+        "Limit": 20
+      }
     },
     {
       "DownstreamPathTemplate": "/api/Notification/{everything}",
       "DownstreamScheme": "http",
-      "DownstreamHostAndPorts": [ { "Host": "localhost", "Port": 5160 } ],
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5160
+        }
+      ],
       "UpstreamPathTemplate": "/notification/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "DELETE" ],
-      "AuthenticationOptions": { "AuthenticationProviderKey": "Bearer", "AllowedScopes": [] },
-      "RateLimitOptions": { "EnableRateLimiting": true, "Period": "1s", "PeriodTimespan": 1, "Limit": 20 }
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "RateLimitOptions": {
+        "EnableRateLimiting": true,
+        "Period": "1s",
+        "PeriodTimespan": 1,
+        "Limit": 20
+      }
     },
     {
       "DownstreamPathTemplate": "/api/User/{everything}",
@@ -42,7 +94,12 @@
         }
       ],
       "UpstreamPathTemplate": "/identity/user/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -65,7 +122,12 @@
         }
       ],
       "UpstreamPathTemplate": "/identity/friendship/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -88,7 +150,9 @@
         }
       ],
       "UpstreamPathTemplate": "/identity/my-sessions",
-      "UpstreamHttpMethod": [ "GET" ],
+      "UpstreamHttpMethod": [
+        "GET"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -111,7 +175,9 @@
         }
       ],
       "UpstreamPathTemplate": "/identity/logout-session/{sessionId}",
-      "UpstreamHttpMethod": [ "POST" ],
+      "UpstreamHttpMethod": [
+        "POST"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -134,7 +200,12 @@
         }
       ],
       "UpstreamPathTemplate": "/identity/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "RateLimitOptions": {
         "ClientWhitelist": [],
         "EnableRateLimiting": true,
@@ -153,7 +224,12 @@
         }
       ],
       "UpstreamPathTemplate": "/message/dm/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -176,7 +252,10 @@
         }
       ],
       "UpstreamPathTemplate": "/message",
-      "UpstreamHttpMethod": [ "GET", "POST" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -199,7 +278,12 @@
         }
       ],
       "UpstreamPathTemplate": "/message/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -222,7 +306,10 @@
         }
       ],
       "UpstreamPathTemplate": "/clan",
-      "UpstreamHttpMethod": [ "GET", "POST" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -245,7 +332,12 @@
         }
       ],
       "UpstreamPathTemplate": "/clan/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -268,7 +360,12 @@
         }
       ],
       "UpstreamPathTemplate": "/clanMembership/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -292,7 +389,12 @@
         }
       ],
       "UpstreamPathTemplate": "/voiceChannel/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -316,7 +418,12 @@
         }
       ],
       "UpstreamPathTemplate": "/role/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -340,7 +447,12 @@
         }
       ],
       "UpstreamPathTemplate": "/channel/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -364,7 +476,12 @@
         }
       ],
       "UpstreamPathTemplate": "/voice/{everything}",
-      "UpstreamHttpMethod": [ "GET", "POST", "PUT", "DELETE" ],
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
       "AuthenticationOptions": {
         "AuthenticationProviderKey": "Bearer",
         "AllowedScopes": []
@@ -387,9 +504,14 @@
         }
       ],
       "UpstreamPathTemplate": "/update/{target}/{currentVersion}",
-      "UpstreamHttpMethod": [ "GET" ],
+      "UpstreamHttpMethod": [
+        "GET"
+      ],
       "AddHeadersToResponse": [
-        { "Key": "Cache-Control", "Value": "no-store" }
+        {
+          "Key": "Cache-Control",
+          "Value": "no-store"
+        }
       ],
       "RateLimitOptions": {
         "ClientWhitelist": [],
@@ -409,10 +531,18 @@
         }
       ],
       "UpstreamPathTemplate": "/download/{target}/{version}",
-      "UpstreamHttpMethod": [ "GET" ],
+      "UpstreamHttpMethod": [
+        "GET"
+      ],
       "AddHeadersToResponse": [
-        { "Key": "X-Content-Type-Options", "Value": "nosniff" },
-        { "Key": "Content-Security-Policy", "Value": "default-src 'none'" }
+        {
+          "Key": "X-Content-Type-Options",
+          "Value": "nosniff"
+        },
+        {
+          "Key": "Content-Security-Policy",
+          "Value": "default-src 'none'"
+        }
       ],
       "RateLimitOptions": {
         "ClientWhitelist": [],
@@ -420,6 +550,106 @@
         "Period": "1m",
         "PeriodTimespan": 60,
         "Limit": 5
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/releases",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5005
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/releases",
+      "UpstreamHttpMethod": [
+        "GET",
+        "POST",
+        "OPTIONS"
+      ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        {
+          "Key": "Cache-Control",
+          "Value": "no-store"
+        }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/releases/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5005
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/releases/{everything}",
+      "UpstreamHttpMethod": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "POST",
+        "OPTIONS"
+      ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        {
+          "Key": "Cache-Control",
+          "Value": "no-store"
+        }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/me",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "localhost",
+          "Port": 5005
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/me",
+      "UpstreamHttpMethod": [
+        "GET",
+        "OPTIONS"
+      ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        {
+          "Key": "Cache-Control",
+          "Value": "no-store"
+        }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
       }
     }
   ],
@@ -429,7 +659,6 @@
       "DisableRateLimitHeaders": false,
       "QuotaExceededMessage": "Too many requests. Please try again later.",
       "HttpStatusCode": 429
-      
     }
   }
 }

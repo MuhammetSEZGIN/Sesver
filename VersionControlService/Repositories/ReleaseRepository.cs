@@ -87,4 +87,53 @@ public class ReleaseRepository : IReleaseRepository
             .AsNoTracking()
             .ToListAsync(cancellationToken);
     }
+
+    /// <inheritdoc />
+    public async Task<ReleaseEntity?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Releases
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var release = await _dbContext.Releases
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+        if (release == null)
+        {
+            return false;
+        }
+
+        _dbContext.Releases.Remove(release);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> SetLatestAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var target = await _dbContext.Releases
+            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+
+        if (target == null)
+        {
+            return false;
+        }
+
+        var previouslyLatest = await _dbContext.Releases
+            .Where(r => r.IsLatest && r.Id != id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var release in previouslyLatest)
+        {
+            release.IsLatest = false;
+        }
+
+        target.IsLatest = true;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }

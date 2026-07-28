@@ -20,6 +20,9 @@ public class RedisConfig {
                 .cacheDefaults(config)
                 .withCacheConfiguration("clanRoles",
                         RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofMinutes(60)))
+                // Global roller nadiren degisir ama yetki kaybi geç yansimasin diye kisa tutuldu
+                .withCacheConfiguration("globalRoles",
+                        RedisCacheConfiguration.defaultCacheConfig().entryTtl(Duration.ofMinutes(5)))
                 // İstersen her tabloya özel süre verebilirsin
                 .build();
     }

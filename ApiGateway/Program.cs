@@ -21,9 +21,10 @@ else
     builder.Configuration.AddJsonFile("ocelot.json", optional: false, reloadOnChange: true);
 }
 
-var corsConfigOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
-var corsDefaultOrigins = new[] { "http://localhost:5173", "tauri://localhost", "https://tauri.localhost","http://tauri.localhost" };
-var corsAllowedOrigins = corsConfigOrigins.Union(corsDefaultOrigins).ToArray();
+// Izinli origin'ler tamamen yapilandirmadan gelir (Cors__AllowedOrigins__N).
+// Sabit liste tutulmaz; aksi halde ortam degiskeniyle daraltmak mumkun olmaz.
+var corsAllowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? Array.Empty<string>();
 
 builder.Services.AddCors(options =>
 {
@@ -145,6 +146,7 @@ app.Use(async (context, next) =>
     context.Request.Headers.Remove("X-User-Avatar");
     context.Request.Headers.Remove("X-Clan-Role");
     context.Request.Headers.Remove("X-Clan-Id");
+    context.Request.Headers.Remove("X-Global-Role");
     context.Request.Headers.Remove("X-Token-Version");
     await next();
 });
@@ -269,6 +271,54 @@ app.Use(async (context, next) =>
 
     context.Request.Headers["X-User-Id"] = userId;
     context.Request.Headers["X-User-Name"] = userName;
+
+    // Global (klandan bagimsiz) rol yalnizca /admin yollarinda cozulur; diger
+    // isteklere AuthService'e ek bir round-trip bindirmemek icin atlanir.
+    if (context.Request.Path.StartsWithSegments("/admin") && !string.IsNullOrEmpty(userId))
+    {
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        var httpClientFactory = context.RequestServices.GetRequiredService<IHttpClientFactory>();
+        var authClient = httpClientFactory.CreateClient("AuthService");
+
+        try
+        {
+            var globalRoleResponse = await authClient.GetAsync(
+                $"/global-roles?userId={Uri.EscapeDataString(userId)}");
+
+            if (globalRoleResponse.IsSuccessStatusCode)
+            {
+                var jsonString = await globalRoleResponse.Content.ReadAsStringAsync();
+                if (!string.IsNullOrWhiteSpace(jsonString))
+                {
+                    try
+                    {
+                        using var jsonDoc = JsonDocument.Parse(jsonString);
+                        if (
+                            jsonDoc.RootElement.TryGetProperty("roles", out var roleElement)
+                            && roleElement.ValueKind == JsonValueKind.String
+                        )
+                        {
+                            var globalRole = roleElement.GetString()?.ToUpperInvariant();
+                            if (!string.IsNullOrEmpty(globalRole))
+                            {
+                                context.Request.Headers["X-Global-Role"] = globalRole;
+                            }
+                        }
+                    }
+                    catch (JsonException ex)
+                    {
+                        logger.LogWarning(ex, "Global rol yaniti ayristirilamadi. userId={UserId}", userId);
+                    }
+                }
+            }
+            globalRoleResponse.Dispose();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            // Rol cozulemezse header eklenmez; downstream servis 403 dondurur.
+            logger.LogWarning(ex, "AuthService global rol sorgusu basarisiz. userId={UserId}", userId);
+        }
+    }
 
     var match = Regex.Match(
         path,

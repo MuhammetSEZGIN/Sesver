@@ -431,6 +431,84 @@
         "PeriodTimespan": 60,
         "Limit": 5
       }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/releases",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "versioncontrolservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/releases",
+      "UpstreamHttpMethod": [ "GET", "POST", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/releases/{everything}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "versioncontrolservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/releases/{everything}",
+      "UpstreamHttpMethod": [ "GET", "PUT", "DELETE", "POST", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/me",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "versioncontrolservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/me",
+      "UpstreamHttpMethod": [ "GET", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
     }
   ],
   "SwaggerEndPoints": [
@@ -476,7 +554,7 @@
     }
   ],
   "GlobalConfiguration": {
-    "BaseUrl": "https://voxify.com.tr",
+    "BaseUrl": "https://app.voxify.com.tr",
     "RateLimitOptions": {
       "DisableRateLimitHeaders": false,
       "QuotaExceededMessage": "Too many requests. Please try again later.",

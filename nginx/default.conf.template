@@ -1,6 +1,11 @@
+# API sunucusu — app.${SERVER_DOMAIN}
+#
+# Kok domain (${SERVER_DOMAIN}) web uygulamasi icin Netlify'a yonlendirilmistir;
+# bu sunucu yalnizca API trafigini karsilar.
+
 server {
     listen 80;
-    server_name ${SERVER_DOMAIN} www.${SERVER_DOMAIN};
+    server_name app.${SERVER_DOMAIN};
 
     # Let's Encrypt challenge
     location /.well-known/acme-challenge/ {
@@ -15,11 +20,11 @@ server {
 
 server {
     listen 443 ssl;
-    server_name ${SERVER_DOMAIN} www.${SERVER_DOMAIN};
+    server_name app.${SERVER_DOMAIN};
 
     # SSL settings
-    ssl_certificate     /etc/letsencrypt/live/${SERVER_DOMAIN}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${SERVER_DOMAIN}/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/app.${SERVER_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.${SERVER_DOMAIN}/privkey.pem;
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
@@ -78,8 +83,8 @@ server {
     }
 
     # ── LiveKit — WebRTC Signaling ──
-    location /livekit {
-        proxy_pass http://livekit-server:7880;
+    location /livekit/ {
+        proxy_pass http://livekit-server:7880/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
