@@ -78,8 +78,8 @@ server {
     }
 
     # ── LiveKit — WebRTC Signaling ──
-    location /livekit {
-        proxy_pass http://livekit-server:7880;
+    location /livekit/ {
+        proxy_pass http://livekit-server:7880/;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";

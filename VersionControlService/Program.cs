@@ -37,6 +37,14 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddScoped<IReleaseRepository, ReleaseRepository>();
 builder.Services.AddScoped<ReleaseCatalogService>();
 
+var adminAuthorizationOptions = new AdminAuthorizationOptions(
+    builder.Configuration.GetSection("Admin:AllowedRoles").Get<string[]>());
+
+builder.Services.AddScoped(serviceProvider => new ReleaseAdminService(
+    serviceProvider.GetRequiredService<IReleaseRepository>(),
+    configuredTargets,
+    serviceProvider.GetRequiredService<ILogger<ReleaseAdminService>>()));
+
 var app = builder.Build();
 
 // Apply migrations and seed database
@@ -52,5 +60,6 @@ app.UseVersionControlResponseLogging();
 app.UseStaticFiles();
 
 app.MapVersionControlEndpoints(configuredTargets);
+app.MapAdminEndpoints(adminAuthorizationOptions);
 
 app.Run();
