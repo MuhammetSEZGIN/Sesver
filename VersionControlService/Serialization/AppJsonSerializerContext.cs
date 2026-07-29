@@ -11,6 +11,7 @@ namespace VersionControlService.Serialization;
 [JsonSerializable(typeof(AdminReleaseDto))]
 [JsonSerializable(typeof(List<AdminReleaseDto>))]
 [JsonSerializable(typeof(AdminArtifactDto))]
+[JsonSerializable(typeof(List<AdminArtifactDto>))]
 [JsonSerializable(typeof(SaveReleaseRequest))]
 [JsonSerializable(typeof(AdminIdentityDto))]
 [JsonSerializable(typeof(List<string>))]
