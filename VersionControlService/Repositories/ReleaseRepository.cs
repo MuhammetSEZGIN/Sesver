@@ -36,52 +36,33 @@ public class ReleaseRepository : IReleaseRepository
     /// <inheritdoc />
     public async Task UpsertLatestAsync(ReleaseEntity release, CancellationToken cancellationToken = default)
     {
-        // Find existing release with same version
-        var existing = await _dbContext.Releases
-            .FirstOrDefaultAsync(r => r.Version == release.Version, cancellationToken);
-
-        // Yayindaki isareti once temizlenir: ayni SaveChanges icinde hem yeni
-        // kaydi ekleyip hem de digerlerini guncellemek, owned koleksiyonun
-        // yeniden olusturulmasiyla birleşince EF'i concurrency hatasina dusuruyor.
+        // Guncellemeler takip edilen varliklar uzerinden degil dogrudan SQL ile
+        // yapilir. EF, SQLite'a Guid'i buyuk harfli metin olarak yazar; elle SQL
+        // ile eklenmis kayitlarda metin farkli olabilecegi ve SQLite'ta metin
+        // karsilastirmasi harf duyarli oldugu icin "WHERE Id = ..." hicbir satiri
+        // bulamayip concurrency hatasi uretiyordu. Version alani uzerinden
+        // calismak bu tuzagi tamamen ortadan kaldirir.
         if (release.IsLatest)
         {
-            var otherReleases = await _dbContext.Releases
+            await _dbContext.Releases
                 .Where(r => r.Version != release.Version && r.IsLatest)
-                .ToListAsync(cancellationToken);
-
-            if (otherReleases.Count > 0)
-            {
-                foreach (var other in otherReleases)
-                {
-                    other.IsLatest = false;
-                }
-
-                await _dbContext.SaveChangesAsync(cancellationToken);
-            }
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(r => r.IsLatest, false),
+                    cancellationToken);
         }
 
-        if (existing != null)
-        {
-            existing.Notes = release.Notes;
-            existing.PubDate = release.PubDate;
-            existing.IsLatest = release.IsLatest;
+        // Ayni surum varsa satiri silip yeniden yaziyoruz; boylece owned
+        // koleksiyonun (Artifacts) guncellenmesi de tek ve ongorulebilir bir
+        // yoldan ilerler. ReleaseArtifacts'taki FK ON DELETE CASCADE tanimli.
+        await _dbContext.Releases
+            .Where(r => r.Version == release.Version)
+            .ExecuteDeleteAsync(cancellationToken);
 
-            // Owned koleksiyonda tek tek Clear/Add yapmak yerine referansi
-            // degistiriyoruz; EF eski satirlari silip yenilerini ekler.
-            existing.Artifacts = release.Artifacts
-                .Select(a => new ReleaseArtifactEntity
-                {
-                    Target = a.Target,
-                    Signature = a.Signature,
-                    Url = a.Url
-                })
-                .ToList();
-        }
-        else
-        {
-            _dbContext.Releases.Add(release);
-        }
+        // ExecuteDelete/ExecuteUpdate change tracker'i guncellemez; onceki
+        // sorgulardan kalan takip kayitlari Add'i bozmasin diye temizlenir.
+        _dbContext.ChangeTracker.Clear();
 
+        _dbContext.Releases.Add(release);
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -110,41 +91,51 @@ public class ReleaseRepository : IReleaseRepository
     /// <inheritdoc />
     public async Task<bool> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var release = await _dbContext.Releases
-            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        // Kaydin surumu uzerinden silinir; bkz. UpsertLatestAsync'teki Guid notu.
+        var version = await _dbContext.Releases
+            .AsNoTracking()
+            .Where(r => r.Id == id)
+            .Select(r => r.Version)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (release == null)
+        if (version == null)
         {
             return false;
         }
 
-        _dbContext.Releases.Remove(release);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+        var deleted = await _dbContext.Releases
+            .Where(r => r.Version == version)
+            .ExecuteDeleteAsync(cancellationToken);
+
+        return deleted > 0;
     }
 
     /// <inheritdoc />
     public async Task<bool> SetLatestAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var target = await _dbContext.Releases
-            .FirstOrDefaultAsync(r => r.Id == id, cancellationToken);
+        var version = await _dbContext.Releases
+            .AsNoTracking()
+            .Where(r => r.Id == id)
+            .Select(r => r.Version)
+            .FirstOrDefaultAsync(cancellationToken);
 
-        if (target == null)
+        if (version == null)
         {
             return false;
         }
 
-        var previouslyLatest = await _dbContext.Releases
-            .Where(r => r.IsLatest && r.Id != id)
-            .ToListAsync(cancellationToken);
+        await _dbContext.Releases
+            .Where(r => r.IsLatest && r.Version != version)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.IsLatest, false),
+                cancellationToken);
 
-        foreach (var release in previouslyLatest)
-        {
-            release.IsLatest = false;
-        }
+        await _dbContext.Releases
+            .Where(r => r.Version == version)
+            .ExecuteUpdateAsync(
+                setters => setters.SetProperty(r => r.IsLatest, true),
+                cancellationToken);
 
-        target.IsLatest = true;
-        await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
 }
