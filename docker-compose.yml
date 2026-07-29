@@ -410,6 +410,9 @@ services:
       - "443:443"
     volumes:
       - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      # includes/ altinda: conf.d'ye konsaydi nginx onu bagimsiz bir config
+      # olarak yuklemeye calisir ve "location outside server" hatasi verirdi.
+      - ./nginx/api-locations.conf:/etc/nginx/includes/api-locations.conf:ro
       - certbot_www:/var/www/certbot:ro
       - certbot_conf:/etc/letsencrypt:ro
     environment:
