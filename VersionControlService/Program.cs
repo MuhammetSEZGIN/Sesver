@@ -53,6 +53,12 @@ using (var scope = app.Services.CreateScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<VersionControlDbContext>();
     await dbContext.Database.EnsureCreatedAsync();
 
+    // Elle SQL ile eklenmis kayitlarin Guid metnini EF'in bicimine getirir;
+    // zaten uygunsa hicbir sey yapmaz (bkz. LegacyIdNormalizer).
+    await LegacyIdNormalizer.NormalizeAsync(
+        dbContext,
+        app.Services.GetRequiredService<ILogger<Program>>());
+
     var catalogService = scope.ServiceProvider.GetRequiredService<ReleaseCatalogService>();
     await catalogService.EnsureSeedAsync();
 }
