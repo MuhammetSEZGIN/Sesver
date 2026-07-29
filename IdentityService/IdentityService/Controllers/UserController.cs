@@ -84,7 +84,7 @@ namespace IdentityService.Controllers
             return Ok(results);
         }
 
-        [Authorize(Roles = "Muhammet")]
+        [Authorize(Roles = "SUPER_ADMIN")]
         [HttpDelete("delete")]
         public async Task<IActionResult> DeleteUser([FromHeader] string id)
         {

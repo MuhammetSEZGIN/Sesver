@@ -29,10 +29,16 @@ public class GatewayAuthenticationHandler : AuthenticationHandler<Authentication
             new Claim(ClaimTypes.NameIdentifier, userId)
         };
 
-        var role = Request.Headers["X-Clan-Role"].FirstOrDefault();
-        if (!string.IsNullOrEmpty(role))
+        var globalRole = Request.Headers["X-Global-Role"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(globalRole))
         {
-            claims.Add(new Claim(ClaimTypes.Role, role));
+            claims.Add(new Claim(ClaimTypes.Role, globalRole));
+        }
+
+        var clanRole = Request.Headers["X-Clan-Role"].FirstOrDefault();
+        if (!string.IsNullOrEmpty(clanRole))
+        {
+            claims.Add(new Claim(ClaimTypes.Role, clanRole));
         }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);

@@ -29,9 +29,19 @@ public class GatewayAuthenticationHandler : AuthenticationHandler<Authentication
             new Claim(ClaimTypes.NameIdentifier, userId)
         };
 
-        var role = Request.Headers["X-Clan-Role"].FirstOrDefault();
-        Logger.LogInformation("[AUTH HANDLER] UserId: {UserId} | Role: {Role}", userId, role ?? "NULL");
-        if (!string.IsNullOrEmpty(role))
+        var clanRole = Request.Headers["X-Clan-Role"].FirstOrDefault();
+        var globalRole = Request.Headers["X-Global-Role"].FirstOrDefault();
+        Logger.LogInformation(
+            "[AUTH HANDLER] UserId: {UserId} | ClanRole: {ClanRole} | GlobalRole: {GlobalRole}",
+            userId,
+            clanRole ?? "NULL",
+            globalRole ?? "NULL");
+
+        var roles = new[] { clanRole, globalRole }
+            .Where(role => !string.IsNullOrWhiteSpace(role))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var role in roles)
         {
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
