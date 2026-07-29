@@ -40,35 +40,46 @@ public class ReleaseRepository : IReleaseRepository
         var existing = await _dbContext.Releases
             .FirstOrDefaultAsync(r => r.Version == release.Version, cancellationToken);
 
-        if (existing != null)
-        {
-            // Update existing release
-            existing.Notes = release.Notes;
-            existing.PubDate = release.PubDate;
-            existing.IsLatest = release.IsLatest;
-            existing.Artifacts.Clear();
-            foreach (var artifact in release.Artifacts)
-            {
-                existing.Artifacts.Add(artifact);
-            }
-        }
-        else
-        {
-            // Add new release
-            _dbContext.Releases.Add(release);
-        }
-
-        // Clear IsLatest from all other releases
+        // Yayindaki isareti once temizlenir: ayni SaveChanges icinde hem yeni
+        // kaydi ekleyip hem de digerlerini guncellemek, owned koleksiyonun
+        // yeniden olusturulmasiyla birleşince EF'i concurrency hatasina dusuruyor.
         if (release.IsLatest)
         {
             var otherReleases = await _dbContext.Releases
                 .Where(r => r.Version != release.Version && r.IsLatest)
                 .ToListAsync(cancellationToken);
 
-            foreach (var other in otherReleases)
+            if (otherReleases.Count > 0)
             {
-                other.IsLatest = false;
+                foreach (var other in otherReleases)
+                {
+                    other.IsLatest = false;
+                }
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
             }
+        }
+
+        if (existing != null)
+        {
+            existing.Notes = release.Notes;
+            existing.PubDate = release.PubDate;
+            existing.IsLatest = release.IsLatest;
+
+            // Owned koleksiyonda tek tek Clear/Add yapmak yerine referansi
+            // degistiriyoruz; EF eski satirlari silip yenilerini ekler.
+            existing.Artifacts = release.Artifacts
+                .Select(a => new ReleaseArtifactEntity
+                {
+                    Target = a.Target,
+                    Signature = a.Signature,
+                    Url = a.Url
+                })
+                .ToList();
+        }
+        else
+        {
+            _dbContext.Releases.Add(release);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
