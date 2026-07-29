@@ -1,11 +1,16 @@
-# API sunucusu — app.${SERVER_DOMAIN}
+# API sunucusu.
 #
-# Kok domain (${SERVER_DOMAIN}) web uygulamasi icin Netlify'a yonlendirilmistir;
-# bu sunucu yalnizca API trafigini karsilar.
+# Kalici adres: app.${SERVER_DOMAIN}
+# Gecis adresi: ${SERVER_DOMAIN} — 1.4.0 ve oncesi masaustu istemciler tum
+#   isteklerini (guncelleme dahil) hala kok alan adina atiyor. Bu blok
+#   kaldirilirsa o istemciler guncelleme bile alamaz. Kullanicilar 1.4.1'e
+#   gectikten ve web uygulamasi Netlify'a tasindiktan sonra kaldirilabilir;
+#   o noktada Netlify tarafinda /update/* -> app.${SERVER_DOMAIN} yonlendirmesi
+#   birakmak eski istemcilerin guncellenmesini surdurur.
 
 server {
     listen 80;
-    server_name app.${SERVER_DOMAIN};
+    server_name app.${SERVER_DOMAIN} ${SERVER_DOMAIN} www.${SERVER_DOMAIN};
 
     # Let's Encrypt challenge
     location /.well-known/acme-challenge/ {
@@ -18,11 +23,11 @@ server {
     }
 }
 
+# ── Kalici: app.<domain> ──
 server {
     listen 443 ssl;
     server_name app.${SERVER_DOMAIN};
 
-    # SSL settings
     # active/ = cert-bootstrap tarafindan hazirlanan yol. Gercek sertifika
     # alinana kadar self-signed dosyalari, sonrasinda live/'a symlink icerir.
     # nginx dogrudan live/'i okusaydi sertifika alinmadan hic baslayamazdi.
@@ -31,71 +36,33 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
     ssl_ciphers         HIGH:!aNULL:!MD5;
 
-    # ── API Gateway (REST) ──
-    location / {
-        proxy_pass http://apigateway:5000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+    include /etc/nginx/includes/api-locations.conf;
 
-    # ── MessageService — SignalR WebSocket via API Gateway auth ──
-    location /messagehub {
-        proxy_pass http://apigateway:5000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # ── PresenceService — SignalR WebSocket ──
-    location /hubs/presence {
-        proxy_pass http://presenceservice:80;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+    # Gzip compression
+    gzip on;
+    gzip_types text/plain application/json application/javascript text/css;
+    gzip_min_length 256;
 
-    # ── NotificationService — SignalR WebSocket ──
-    location /hubs/notification {
-        proxy_pass http://notificationservice:80;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
+    client_max_body_size 10M;
+}
 
-    # ── LiveKit — WebRTC Signaling ──
-    location /livekit/ {
-        proxy_pass http://livekit-server:7880/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+# ── Gecis: <domain> ve www.<domain> — eski istemciler icin ──
+server {
+    listen 443 ssl;
+    server_name ${SERVER_DOMAIN} www.${SERVER_DOMAIN};
+
+    ssl_certificate     /etc/letsencrypt/live/${SERVER_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${SERVER_DOMAIN}/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_ciphers         HIGH:!aNULL:!MD5;
+
+    include /etc/nginx/includes/api-locations.conf;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
