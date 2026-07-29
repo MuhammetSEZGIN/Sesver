@@ -433,6 +433,110 @@
       }
     },
     {
+      "DownstreamPathTemplate": "/admin/users",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "identityservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/users",
+      "UpstreamHttpMethod": [ "GET", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/admin/users/{userId}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "identityservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/users/{userId}",
+      "UpstreamHttpMethod": [ "DELETE", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/admin/clans",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "clanservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/clans",
+      "UpstreamHttpMethod": [ "GET", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
+      "DownstreamPathTemplate": "/api/admin/clans/{clanId}",
+      "DownstreamScheme": "http",
+      "DownstreamHostAndPorts": [
+        {
+          "Host": "clanservice",
+          "Port": 80
+        }
+      ],
+      "UpstreamPathTemplate": "/admin/clans/{clanId}",
+      "UpstreamHttpMethod": [ "DELETE", "OPTIONS" ],
+      "AuthenticationOptions": {
+        "AuthenticationProviderKey": "Bearer",
+        "AllowedScopes": []
+      },
+      "AddHeadersToResponse": [
+        { "Key": "Cache-Control", "Value": "no-store" }
+      ],
+      "RateLimitOptions": {
+        "ClientWhitelist": [],
+        "EnableRateLimiting": true,
+        "Period": "1m",
+        "PeriodTimespan": 60,
+        "Limit": 60
+      }
+    },
+    {
       "DownstreamPathTemplate": "/admin/releases",
       "DownstreamScheme": "http",
       "DownstreamHostAndPorts": [

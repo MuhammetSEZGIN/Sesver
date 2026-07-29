@@ -5,7 +5,8 @@ using Microsoft.IdentityModel.Tokens;
 
 // JWT'nin gercek dogrulamasi ApiGateway'de yapiliyor; alt servisler (ClanService,
 // MessageService ve artik IdentityService de) gateway'in enjekte ettigi X-User-Id /
-// X-Clan-Role header'larina guveniyor (GatewayAuthenticationHandler, default scheme).
+// X-Global-Role / X-Clan-Role header'larina guveniyor
+// (GatewayAuthenticationHandler, default scheme).
 // JwtBearer semasi kayitli kaliyor ama sadece ileride servisin token'i dogrudan
 // (gateway'siz) dogrulamasi gerekirse kullanilmak uzere - su an hicbir [Authorize]
 // bunu varsayilan olarak kullanmiyor.

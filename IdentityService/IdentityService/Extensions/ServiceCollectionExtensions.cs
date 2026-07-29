@@ -56,6 +56,7 @@ namespace IdentityService.Extensions
             services.AddScoped<IIpAddressService, IpAddressService>();
             services.AddScoped<IRegisterService, RegisterService>();
             services.AddScoped<IUserService, UserService>();
+            services.AddScoped<IAdminUserService, AdminUserService>();
             services.AddScoped<IFriendshipService, FriendshipService>();
             services.AddScoped<ITokenVersionStore, RedisTokenVersionStore>();
 
