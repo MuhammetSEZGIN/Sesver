@@ -176,6 +176,7 @@ services:
       Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
       Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       Cors__AllowedOrigins__4: "${CORS_ORIGIN_5}"
+      Cors__AllowedOrigins__5: "${CORS_ORIGIN_6}"
     depends_on:
       clanservice-db:
         condition: service_healthy
@@ -232,6 +233,7 @@ services:
       Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
       Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       Cors__AllowedOrigins__4: "${CORS_ORIGIN_5}"
+      Cors__AllowedOrigins__5: "${CORS_ORIGIN_6}"
       MongoDbConnection__ConnectionString: "mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@message-db:27017"
       MongoDbConnection__DatabaseName: "messageservicedb"
       MongoDbConnection__UsersCollection: "users"
@@ -264,6 +266,7 @@ services:
       Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
       Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       Cors__AllowedOrigins__4: "${CORS_ORIGIN_5}"
+      Cors__AllowedOrigins__5: "${CORS_ORIGIN_6}"
       RabbitMQ__HostName: "${RABBITMQ_HOST}"
       RabbitMQ__VirtualHost: "${RABBITMQ_VHOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
@@ -291,6 +294,7 @@ services:
       Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
       Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       Cors__AllowedOrigins__4: "${CORS_ORIGIN_5}"
+      Cors__AllowedOrigins__5: "${CORS_ORIGIN_6}"
       RabbitMQ__HostName: "${RABBITMQ_HOST}"
       RabbitMQ__VirtualHost: "${RABBITMQ_VHOST}"
       RabbitMQ__Port: "${RABBITMQ_PORT}"
@@ -387,6 +391,7 @@ services:
       Cors__AllowedOrigins__2: "${CORS_ORIGIN_3}"
       Cors__AllowedOrigins__3: "${CORS_ORIGIN_4}"
       Cors__AllowedOrigins__4: "${CORS_ORIGIN_5}"
+      Cors__AllowedOrigins__5: "${CORS_ORIGIN_6}"
     ports:
       - "5000:5000"
     depends_on:
