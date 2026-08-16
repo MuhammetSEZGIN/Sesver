@@ -7,5 +7,6 @@ public class UserMeDto
     public string Email { get; set; }
     public string Bio { get; set; }
     public string AvatarUrl { get; set; }
+    public string ProfileBackgroundUrl { get; set; }
     public bool EmailConfirmed { get; set; }
 }

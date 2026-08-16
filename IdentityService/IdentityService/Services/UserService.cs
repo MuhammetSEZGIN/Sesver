@@ -48,6 +48,7 @@ namespace IdentityService.Services
             user.UserName = model.UserName;
             user.AvatarUrl = model.AvatarUrl;
             user.Bio = model.Bio;
+            user.ProfileBackgroundUrl = NormalizeOptionalUrl(model.ProfileBackgroundUrl);
 
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
@@ -214,9 +215,46 @@ namespace IdentityService.Services
                 Email = user.Email,
                 Bio = user.Bio,
                 AvatarUrl = user.AvatarUrl,
+                ProfileBackgroundUrl = user.ProfileBackgroundUrl,
                 EmailConfirmed = user.EmailConfirmed,
             };
         }
+
+        public async Task<ApiResponse<UserProfileDto>> GetUserProfileAsync(string userId)
+        {
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return ApiResponse<UserProfileDto>.NotFound("User not found");
+            }
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+            {
+                _logger.LogInformation(
+                    "Profile requested for unknown user id {UserId}",
+                    userId
+                );
+                return ApiResponse<UserProfileDto>.NotFound("User not found");
+            }
+
+            return ApiResponse<UserProfileDto>.Success(
+                new UserProfileDto
+                {
+                    Id = user.Id,
+                    UserName = user.UserName,
+                    AvatarUrl = user.AvatarUrl,
+                    Bio = user.Bio,
+                    ProfileBackgroundUrl = user.ProfileBackgroundUrl,
+                }
+            );
+        }
+
+        /// <summary>
+        /// Stores a cleared URL as null rather than as an empty string so every consumer sees
+        /// the same "no image" value.
+        /// </summary>
+        private static string NormalizeOptionalUrl(string url) =>
+            string.IsNullOrWhiteSpace(url) ? null : url.Trim();
 
         public async Task<ApiResponse<object>> ChangePasswordAsync(
             string userId,

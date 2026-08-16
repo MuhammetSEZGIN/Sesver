@@ -8,8 +8,11 @@ public class ApplicationUser : IdentityUser
 {
     public string AvatarUrl { get; set; }
 
-    [MaxLength(190)]
+    [MaxLength(200)]
     public string Bio { get; set; }
+
+    [MaxLength(2048)]
+    public string ProfileBackgroundUrl { get; set; }
 
     public int TokenVersion { get; set; }
 

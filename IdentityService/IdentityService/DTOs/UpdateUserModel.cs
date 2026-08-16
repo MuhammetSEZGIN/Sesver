@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using IdentityService.Attributes;
 
 namespace IdentityService.DTOs
 {
@@ -7,9 +8,13 @@ namespace IdentityService.DTOs
         [Required]
         public string UserName { get; set; }
 
+        [MaxLength(2048)]
         public string AvatarUrl { get; set; }
 
-        [MaxLength(190)]
+        [MaxLength(200)]
         public string Bio { get; set; }
+
+        [ImageUrl]
+        public string ProfileBackgroundUrl { get; set; }
     }
 }

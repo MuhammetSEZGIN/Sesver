@@ -76,3 +76,8 @@ npm-debug.log*
 
 # Temporary files
 [Tt]emp/
+
+# Super-Admin paneli build ciktisi. Takip edilmemeli: deploy.yml takip edilen
+# dosyalarda degisiklik gorunce deploy'u iptal ediyor.
+/admin-dist/*
+!/admin-dist/.gitkeep

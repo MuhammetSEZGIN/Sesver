@@ -423,6 +423,7 @@ services:
       # includes/ altinda: conf.d'ye konsaydi nginx onu bagimsiz bir config
       # olarak yuklemeye calisir ve "location outside server" hatasi verirdi.
       - ./nginx/api-locations.conf:/etc/nginx/includes/api-locations.conf:ro
+      - ./admin-dist:/usr/share/nginx/admin:ro
       - certbot_www:/var/www/certbot:ro
       - certbot_conf:/etc/letsencrypt:ro
     environment:
