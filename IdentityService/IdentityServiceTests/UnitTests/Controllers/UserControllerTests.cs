@@ -231,6 +231,88 @@ namespace IdentityServiceTests.UnitTests.Controllers
             _mockUserService.Verify(x => x.UpdateUserAsync(TestUserId, updateModel), Times.Once);
         }
 
+        [Fact]
+        public async Task UpdateUser_ValidModel_ReturnsRefreshedProfile()
+        {
+            // Arrange
+            var updateModel = new UpdateUserModel
+            {
+                UserName = "updateduser",
+                ProfileBackgroundUrl = "https://example.com/background.gif"
+            };
+            var refreshed = new UserMeDto
+            {
+                Id = TestUserId,
+                UserName = "updateduser",
+                ProfileBackgroundUrl = "https://example.com/background.gif"
+            };
+
+            _mockUserService
+                .Setup(x => x.UpdateUserAsync(TestUserId, It.IsAny<UpdateUserModel>()))
+                .ReturnsAsync(IdentityResult.Success);
+            _mockUserService.Setup(x => x.GetMeAsync(TestUserId)).ReturnsAsync(refreshed);
+
+            // Act
+            var result = await _controller.UpdateUser(updateModel);
+
+            // Assert
+            var okResult = Assert.IsType<OkObjectResult>(result);
+            var response = okResult.Value;
+            var data = response.GetType().GetProperty("Data")?.GetValue(response, null);
+            Assert.Same(refreshed, data);
+        }
+
+        #endregion
+
+        #region GetUserProfile Tests
+
+        [Fact]
+        public async Task GetUserProfile_UserExists_ReturnsProfileEnvelope()
+        {
+            // Arrange
+            var profile = new UserProfileDto
+            {
+                Id = "user456",
+                UserName = "otheruser",
+                AvatarUrl = "https://example.com/avatar.jpg",
+                Bio = "hello",
+                ProfileBackgroundUrl = "https://example.com/background.gif"
+            };
+
+            _mockUserService
+                .Setup(x => x.GetUserProfileAsync("user456"))
+                .ReturnsAsync(ApiResponse<UserProfileDto>.Success(profile));
+
+            // Act
+            var result = await _controller.GetUserProfile("user456");
+
+            // Assert
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(200, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<UserProfileDto>>(objectResult.Value);
+            Assert.True(response.IsSuccessfull);
+            Assert.Equal(profile, response.Data);
+        }
+
+        [Fact]
+        public async Task GetUserProfile_UserNotFound_ReturnsNotFound()
+        {
+            // Arrange
+            _mockUserService
+                .Setup(x => x.GetUserProfileAsync("missing"))
+                .ReturnsAsync(ApiResponse<UserProfileDto>.NotFound("User not found"));
+
+            // Act
+            var result = await _controller.GetUserProfile("missing");
+
+            // Assert
+            var objectResult = Assert.IsType<ObjectResult>(result);
+            Assert.Equal(404, objectResult.StatusCode);
+            var response = Assert.IsType<ApiResponse<UserProfileDto>>(objectResult.Value);
+            Assert.False(response.IsSuccessfull);
+            Assert.Null(response.Data);
+        }
+
         #endregion
 
         #region ChangeEmail Tests

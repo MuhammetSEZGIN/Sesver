@@ -35,8 +35,8 @@ namespace IdentityService.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("Bio")
-                        .HasMaxLength(190)
-                        .HasColumnType("character varying(190)");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
@@ -71,6 +71,10 @@ namespace IdentityService.Migrations
 
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("ProfileBackgroundUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");

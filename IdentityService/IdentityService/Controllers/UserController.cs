@@ -33,14 +33,27 @@ namespace IdentityService.Controllers
             return Ok(me);
         }
 
+        /// <summary>
+        /// Returns the public profile card of another user. Never exposes email,
+        /// role claims or session data.
+        /// </summary>
+        [HttpGet("{userId}/profile")]
+        public async Task<IActionResult> GetUserProfile(string userId)
+        {
+            var result = await _userService.GetUserProfileAsync(userId);
+            return new ObjectResult(result) { StatusCode = result.StatusCode };
+        }
+
         [HttpPut("update")]
+        [ValidateModel]
         public async Task<IActionResult> UpdateUser([FromBody] UpdateUserModel model)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
             var result = await _userService.UpdateUserAsync(userId, model);
             if (result.Succeeded)
             {
-                return Ok(new { Message = "User updated successfully" });
+                var profile = await _userService.GetMeAsync(userId);
+                return Ok(new { Message = "User updated successfully", Data = profile });
             }
             return BadRequest(result.Errors);
         }
