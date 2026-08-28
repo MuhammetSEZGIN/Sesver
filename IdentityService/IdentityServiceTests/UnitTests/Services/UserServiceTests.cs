@@ -30,14 +30,16 @@ public class UserServiceTests
     private static UserService CreateService(
         Mock<UserManager<ApplicationUser>> userManager,
         Mock<IEmailService> emailService,
-        Mock<IRefreshTokenService> refreshTokenService = null
+        Mock<IRefreshTokenService>? refreshTokenService = null,
+        Mock<IIdentityProducer>? identityProducer = null
     ) =>
         new UserService(
             userManager.Object,
             emailService.Object,
             Mock.Of<ILogger<UserService>>(),
             new ConfigurationBuilder().Build(),
-            (refreshTokenService ?? new Mock<IRefreshTokenService>()).Object
+            (refreshTokenService ?? new Mock<IRefreshTokenService>()).Object,
+            (identityProducer ?? new Mock<IIdentityProducer>()).Object
         );
 
     [Fact]
@@ -172,6 +174,91 @@ public class UserServiceTests
 
         Assert.True(result.Succeeded);
         Assert.Equal("https://example.com/background.gif", user.ProfileBackgroundUrl);
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_Success_PublishesUpdatedUserInformation()
+    {
+        var user = new ApplicationUser
+        {
+            Id = "user-1",
+            UserName = "old-name",
+            AvatarUrl = "https://example.com/old.png",
+        };
+        var model = new UpdateUserModel
+        {
+            UserName = "new-name",
+            AvatarUrl = "https://example.com/new.png",
+        };
+        var userManager = BuildUserManager();
+        userManager.Setup(x => x.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager.Setup(x => x.UpdateAsync(user)).ReturnsAsync(IdentityResult.Success);
+        var identityProducer = new Mock<IIdentityProducer>();
+        var service = CreateService(
+            userManager,
+            new Mock<IEmailService>(),
+            identityProducer: identityProducer
+        );
+
+        var result = await service.UpdateUserAsync(user.Id, model);
+
+        Assert.True(result.Succeeded);
+        identityProducer.Verify(
+            producer => producer.PublishUserUpdatedMessageAsync(
+                model.UserName,
+                model.AvatarUrl,
+                user.Id),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateUserAsync_Failure_DoesNotPublishUpdatedUserInformation()
+    {
+        var user = new ApplicationUser { Id = "user-1", UserName = "old-name" };
+        var model = new UpdateUserModel { UserName = "new-name" };
+        var userManager = BuildUserManager();
+        userManager.Setup(x => x.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager
+            .Setup(x => x.UpdateAsync(user))
+            .ReturnsAsync(IdentityResult.Failed(new IdentityError()));
+        var identityProducer = new Mock<IIdentityProducer>();
+        var service = CreateService(
+            userManager,
+            new Mock<IEmailService>(),
+            identityProducer: identityProducer
+        );
+
+        var result = await service.UpdateUserAsync(user.Id, model);
+
+        Assert.False(result.Succeeded);
+        identityProducer.Verify(
+            producer => producer.PublishUserUpdatedMessageAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task DeleteUserAsync_Success_PublishesUserDeletedMessage()
+    {
+        var user = new ApplicationUser { Id = "user-1", UserName = "testuser" };
+        var userManager = BuildUserManager();
+        userManager.Setup(x => x.FindByIdAsync(user.Id)).ReturnsAsync(user);
+        userManager.Setup(x => x.DeleteAsync(user)).ReturnsAsync(IdentityResult.Success);
+        var identityProducer = new Mock<IIdentityProducer>();
+        var service = CreateService(
+            userManager,
+            new Mock<IEmailService>(),
+            identityProducer: identityProducer
+        );
+
+        var result = await service.DeleteUserAsync(user.Id);
+
+        Assert.True(result.Succeeded);
+        identityProducer.Verify(
+            producer => producer.PublishUserDeletedMessageAsync(user.Id),
+            Times.Once);
     }
 
     [Theory]

@@ -89,6 +89,10 @@ public record UserUpdatedMessage
     public string? AvatarUrl { get; init; }
 
 }
+public record UserDeletedMessage
+{
+    public string? UserId { get; init; }
+}
 public record ClanDeletedMessage
 {
     public string? ClanId { get; init; }

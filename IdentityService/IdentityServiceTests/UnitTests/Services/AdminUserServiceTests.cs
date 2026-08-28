@@ -179,7 +179,11 @@ public class AdminUserServiceTests
                 await context.SaveChangesAsync();
                 return IdentityResult.Success;
             });
-        var service = CreateService(userManager, context);
+        var identityProducer = new Mock<IIdentityProducer>();
+        var service = CreateService(
+            userManager,
+            context,
+            identityProducer: identityProducer);
 
         var result = await service.DeleteUserAsync("admin-1", target.Id);
 
@@ -189,6 +193,9 @@ public class AdminUserServiceTests
         Assert.False(await context.Friendships.AnyAsync(friendship =>
             friendship.RequesterId == target.Id || friendship.AddresseeId == target.Id));
         Assert.Equal(1, await context.Friendships.CountAsync());
+        identityProducer.Verify(
+            producer => producer.PublishUserDeletedMessageAsync(target.Id),
+            Times.Once);
     }
 
     [Fact]
@@ -238,7 +245,8 @@ public class AdminUserServiceTests
     private static AdminUserService CreateService(
         Mock<UserManager<ApplicationUser>> userManager,
         IdentityDbContext context,
-        Mock<IRefreshTokenService>? refreshTokenService = null)
+        Mock<IRefreshTokenService>? refreshTokenService = null,
+        Mock<IIdentityProducer>? identityProducer = null)
     {
         if (refreshTokenService == null)
         {
@@ -252,6 +260,7 @@ public class AdminUserServiceTests
             userManager.Object,
             context,
             refreshTokenService.Object,
+            (identityProducer ?? new Mock<IIdentityProducer>()).Object,
             Mock.Of<ILogger<AdminUserService>>());
     }
 }

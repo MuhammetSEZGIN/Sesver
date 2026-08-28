@@ -19,30 +19,39 @@ public class RabbitMqService : IRabbitMqService
 
     public async Task ConsumeUserInformation(UserUpdatedMessage userUpdatedMessage)
     {
-        try
+        var existing = await _userRepository.GetByIdAsync(userUpdatedMessage.userId);
+        if (existing != null)
         {
-            var existing = await _userRepository.GetByIdAsync(userUpdatedMessage.userId);
+            existing.Username = userUpdatedMessage.userName;
+            existing.AvatarUrl = userUpdatedMessage.AvatarUrl;
+            await _userRepository.UpdateAsync(existing);
+            _logger.LogInformation("User {UserId} updated successfully.", userUpdatedMessage.userId);
+        }
+        else
+        {
             var user = new User
             {
                 Id = userUpdatedMessage.userId,
                 Username = userUpdatedMessage.userName,
                 AvatarUrl = userUpdatedMessage.AvatarUrl
             };
+            await _userRepository.AddAsync(user);
+            _logger.LogInformation("User {UserId} created successfully.", userUpdatedMessage.userId);
+        }
+    }
 
-            if (existing != null)
-            {
-                await _userRepository.UpdateAsync(user);
-                _logger.LogInformation("User {UserId} updated successfully.", userUpdatedMessage.userId);
-            }
-            else
-            {
-                await _userRepository.AddAsync(user);
-                _logger.LogInformation("User {UserId} created successfully.", userUpdatedMessage.userId);
-            }
-        }
-        catch (Exception e)
+    public async Task ConsumeUserDeleted(UserDeletedMessage userDeletedMessage)
+    {
+        var existing = await _userRepository.GetByIdAsync(userDeletedMessage.UserId);
+        if (existing == null)
         {
-            _logger.LogError(e, "Error while saving user information for {UserId}.", userUpdatedMessage.userId);
+            _logger.LogInformation(
+                "User {UserId} was already absent; deletion event ignored.",
+                userDeletedMessage.UserId);
+            return;
         }
+
+        await _userRepository.DeleteAsync(existing);
+        _logger.LogInformation("User {UserId} deleted successfully.", userDeletedMessage.UserId);
     }
 }

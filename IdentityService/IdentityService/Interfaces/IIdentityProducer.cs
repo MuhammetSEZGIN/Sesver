@@ -9,6 +9,7 @@ public interface IIdentityProducer
             string avatarUrl,
             string userId
         );
+    Task PublishUserDeletedMessageAsync(string userId);
     Task PublishNotificationAsync(NotificationRequestedMessage message);
     Task PublishFriendshipRelationshipChangedAsync(FriendshipRelationshipChangedMessage message);
 }

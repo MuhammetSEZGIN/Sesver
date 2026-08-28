@@ -36,6 +36,12 @@ public class IdentityProducer :IIdentityProducer
         await _publishEndpoint.Publish(message);
     }
 
+    public Task PublishUserDeletedMessageAsync(string userId)
+    {
+        _logger.LogInformation("Publishing UserDeletedMessage for user: {UserId}", userId);
+        return _publishEndpoint.Publish(new UserDeletedMessage { UserId = userId });
+    }
+
     public Task PublishNotificationAsync(NotificationRequestedMessage message) =>
         _publishEndpoint.Publish(message);
 

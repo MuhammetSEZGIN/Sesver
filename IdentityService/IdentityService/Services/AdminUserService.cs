@@ -15,17 +15,20 @@ public sealed class AdminUserService : IAdminUserService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IdentityDbContext _context;
     private readonly IRefreshTokenService _refreshTokenService;
+    private readonly IIdentityProducer _identityProducer;
     private readonly ILogger<AdminUserService> _logger;
 
     public AdminUserService(
         UserManager<ApplicationUser> userManager,
         IdentityDbContext context,
         IRefreshTokenService refreshTokenService,
+        IIdentityProducer identityProducer,
         ILogger<AdminUserService> logger)
     {
         _userManager = userManager;
         _context = context;
         _refreshTokenService = refreshTokenService;
+        _identityProducer = identityProducer;
         _logger = logger;
     }
 
@@ -134,6 +137,8 @@ public sealed class AdminUserService : IAdminUserService
                 targetUserId);
             return ApiResponse<object>.Failed("User could not be deleted.");
         }
+
+        await _identityProducer.PublishUserDeletedMessageAsync(targetUserId);
 
         _logger.LogInformation(
             "Admin {ActorUserId} deleted user {TargetUserId}",

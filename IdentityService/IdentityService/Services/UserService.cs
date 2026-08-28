@@ -20,13 +20,15 @@ namespace IdentityService.Services
         private readonly ILogger<UserService> _logger;
         private readonly IConfiguration _config;
         private readonly IRefreshTokenService _refreshTokenService;
+        private readonly IIdentityProducer _identityProducer;
 
         public UserService(
             UserManager<ApplicationUser> userManager,
             IEmailService mailService,
             ILogger<UserService> logger,
             IConfiguration config,
-            IRefreshTokenService refreshTokenService
+            IRefreshTokenService refreshTokenService,
+            IIdentityProducer identityProducer
         )
         {
             _userManager = userManager;
@@ -34,6 +36,7 @@ namespace IdentityService.Services
             _logger = logger;
             _config = config;
             _refreshTokenService = refreshTokenService;
+            _identityProducer = identityProducer;
         }
 
         public async Task<IdentityResult> UpdateUserAsync(string userId, UpdateUserModel model)
@@ -61,6 +64,11 @@ namespace IdentityService.Services
             }
             else
             {
+                await _identityProducer.PublishUserUpdatedMessageAsync(
+                    user.UserName,
+                    user.AvatarUrl,
+                    user.Id
+                );
                 _logger.LogInformation("Successfully updated user {UserId}", userId);
             }
 
@@ -163,6 +171,7 @@ namespace IdentityService.Services
             var result = await _userManager.DeleteAsync(user);
             if (result.Succeeded)
             {
+                await _identityProducer.PublishUserDeletedMessageAsync(id);
                 _logger.LogInformation("Successfully deleted user with id {UserId}", id);
             }
             else
